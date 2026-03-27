@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase status:*)",
+      "Bash(cmd.exe /c \"netstat -ano | findstr :3000\")",
+      "Bash(npm run:*)",
+      "Bash(npx playwright:*)",
+      "Bash(find /c/Users/Bo/repos/be-task-assignment -maxdepth 2 -type f -name *.config.* -o -name playwright.config.* -o -name package.json -o -name README.md)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_network_requests",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_type"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
+}

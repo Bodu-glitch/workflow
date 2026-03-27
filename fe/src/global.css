@@ -1,0 +1,99 @@
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css';
+
+@layer theme {
+  @theme {
+    --color-brand: #1E40AF;
+
+    /* Executive Kinetic Design System — Material Design 3 tokens */
+    --color-primary: #1E40AF;
+    --color-primary-container: #2563EB;
+    --color-on-primary: #ffffff;
+    --color-on-primary-container: #dbeafe;
+
+    --color-secondary: #4c5d8d;
+    --color-secondary-container: #b6c8fe;
+    --color-on-secondary: #ffffff;
+    --color-on-secondary-container: #415382;
+
+    --color-tertiary: #7b2600;
+    --color-tertiary-container: #a33500;
+    --color-on-tertiary: #ffffff;
+    --color-on-tertiary-container: #ffc6b2;
+
+    --color-surface: #f8f9ff;
+    --color-surface-container-lowest: #ffffff;
+    --color-surface-container-low: #eff4ff;
+    --color-surface-container: #e6eeff;
+    --color-surface-container-high: #dce9ff;
+    --color-surface-container-highest: #d5e3fc;
+    --color-surface-dim: #ccdbf3;
+    --color-surface-bright: #f8f9ff;
+    --color-surface-variant: #d5e3fc;
+
+    --color-on-surface: #0d1c2e;
+    --color-on-surface-variant: #434654;
+    --color-on-background: #0d1c2e;
+
+    --color-outline: #737685;
+    --color-outline-variant: #c3c6d6;
+
+    --color-error: #ba1a1a;
+    --color-error-container: #ffdad6;
+    --color-on-error: #ffffff;
+    --color-on-error-container: #93000a;
+
+    --color-inverse-surface: #233144;
+    --color-inverse-on-surface: #eaf1ff;
+    --color-inverse-primary: #b2c5ff;
+
+    --color-success: #1a6e3d;
+    --color-success-container: #b7f1d2;
+    --color-on-success-container: #003920;
+
+    --color-warning: #7a4f00;
+    --color-warning-container: #ffddb4;
+    --color-on-warning-container: #271900;
+  }
+}
+
+/* Kinetic utility classes */
+.kinetic-gradient {
+  background: linear-gradient(135deg, #1E40AF 0%, #2563EB 100%);
+}
+
+.glass-effect {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+}
+
+/* Web font families (referenced via var() in src/constants/theme.ts) */
+:root {
+  --font-display:
+    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+    Segoe UI Symbol, Noto Color Emoji;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+}
+
+/* Platform-specific font families for native */
+@media android {
+  :root {
+    --font-mono: monospace;
+    --font-rounded: normal;
+    --font-serif: serif;
+    --font-sans: normal;
+  }
+}
+
+@media ios {
+  :root {
+    --font-mono: ui-monospace;
+    --font-serif: ui-serif;
+    --font-sans: system-ui;
+    --font-rounded: ui-rounded;
+  }
+}
