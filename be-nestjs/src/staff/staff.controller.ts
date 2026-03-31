@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { StaffService } from './staff.service.js';
 import { InviteStaffDto } from './dto/invite-staff.dto.js';
-import { RegisterStaffDto } from './dto/register-staff.dto.js';
+import { AcceptInvitationGoogleDto } from './dto/accept-invitation-google.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
@@ -12,10 +12,10 @@ import { PaginationDto } from '../common/dto/pagination.dto.js';
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
 
-  /** Public — register via email invitation token */
-  @Post('register')
-  register(@Body() dto: RegisterStaffDto) {
-    return this.staffService.register(dto);
+  /** Public — accept invitation via Google OAuth (for new users) */
+  @Post('accept-invitation-google')
+  acceptInvitationGoogle(@Body() dto: AcceptInvitationGoogleDto) {
+    return this.staffService.acceptInvitationGoogle(dto);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

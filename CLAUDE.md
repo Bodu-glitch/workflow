@@ -47,20 +47,12 @@ File `be-nestjs/.env` (gitignored):
 ```env
 SUPABASE_URL=http://localhost:54321
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-JWT_SECRET=<random-secret>
-JWT_EXPIRES_IN=7d
 PORT=3000
-
-# Redis
-REDIS_HOST=<host>
-REDIS_PORT=<port>
-REDIS_USERNAME=<username>
-REDIS_PASSWORD=<password>
 
 # Email (Resend)
 RESEND_API_KEY=<resend-api-key>
 RESEND_FROM_EMAIL=onboarding@resend.dev   # default nếu không set
-APP_FRONTEND_URL=http://localhost:3001    # dùng để tạo link trong email mời
+APP_FRONTEND_URL=http://localhost:8081    # dùng để tạo link trong email mời
 ```
 
 Service role key lấy từ output của `supabase start`.
@@ -78,8 +70,8 @@ src/
 │   │   ├── current-user.decorator.ts   # @CurrentUser() → user từ JWT
 │   │   └── roles.decorator.ts          # @Roles('business_owner', ...)
 │   ├── guards/
-│   │   ├── jwt-auth.guard.ts           # Extends AuthGuard('jwt')
-│   │   └── roles.guard.ts             # Check role từ JWT payload
+│   │   ├── jwt-auth.guard.ts           # Validate via supabase.db.auth.getUser(token) + X-Tenant-ID header
+│   │   └── roles.guard.ts             # Check role từ req.user
 │   ├── filters/
 │   │   └── http-exception.filter.ts   # Format: { error: { code, message } }
 │   ├── interceptors/
@@ -106,14 +98,11 @@ src/
 
 | Method | Route | Auth | Mô tả |
 |--------|-------|------|-------|
-| POST | `/auth/register` | public | Tự đăng ký: tạo account + tenant mới, trả JWT |
-| POST | `/auth/login` | public | Đăng nhập; trả JWT hoặc danh sách tenant |
-| POST | `/auth/select-tenant` | public (pre-auth) | Chọn tenant context, nhận full JWT |
+| POST | `/auth/google` | public | Validate Google token, trả profile + tenants |
+| POST | `/auth/complete-google-onboarding` | JWT | User Google mới tạo workspace lần đầu |
+| POST | `/auth/create-tenant` | JWT | Tạo tenant thêm (multi-tenant) |
 | POST | `/auth/logout` | any | Xóa device_token |
-| GET | `/auth/profile` | any | Thông tin user hiện tại |
-| PATCH | `/auth/change-password` | any | Đổi mật khẩu |
-| POST | `/auth/forgot-password` | public | Gửi OTP qua email |
-| POST | `/auth/reset-password` | public | Đặt lại mật khẩu qua OTP |
+| GET | `/auth/profile` | any | Thông tin user; trả `{ requires_onboarding: true }` nếu chưa có tenant |
 | PATCH | `/auth/device-token` | any | Cập nhật Expo push token |
 | GET | `/admin/tenants` | superadmin | Danh sách tenant |
 | POST | `/admin/tenants` | superadmin | Tạo tenant |
@@ -123,7 +112,7 @@ src/
 | POST | `/admin/users` | superadmin | Tạo BO/Operator (insert users + user_tenants) |
 | PATCH | `/admin/users/:id/activate` | superadmin | Kích hoạt user |
 | PATCH | `/admin/users/:id/deactivate` | superadmin | Vô hiệu user |
-| POST | `/staff/register` | public | Đăng ký tài khoản mới qua email invitation token |
+| POST | `/staff/accept-invitation-google` | public | Chấp nhận lời mời qua Google token + invitation token |
 | POST | `/staff/invite` | BO/OT | Mời staff (xem Invitation Flow bên dưới) |
 | GET | `/staff` | BO/OT | Danh sách staff trong tenant |
 | GET | `/staff/invitations` | BO/OT | Danh sách lời mời của tenant |
@@ -131,7 +120,6 @@ src/
 | POST | `/staff/invite/:id/resend` | BO/OT | Gửi lại lời mời |
 | PATCH | `/staff/invitations/:id/accept` | any | Chấp nhận lời mời in-app (mobile) |
 | PATCH | `/staff/invitations/:id/decline` | any | Từ chối lời mời in-app |
-| PATCH | `/staff/accept-invitation/:token` | public | Chấp nhận lời mời qua token từ email link |
 | DELETE | `/staff/:id` | BO/OT | Xóa staff khỏi tenant |
 | GET | `/tasks/dashboard` | BO/OT | Thống kê theo status + overdue |
 | GET | `/tasks` | any | Danh sách task (filter: status, priority, from, to) |
@@ -163,7 +151,8 @@ operator       → tương tự BO nhưng hạn chế hơn
 staff          → nhân viên hiện trường, chỉ thấy task được gán
 ```
 
-JWT payload: `{ sub, email, role, tenant_id }`
+Token: Supabase JWT (ES256), validate bằng `supabase.db.auth.getUser(token)`.
+Tenant context: header `X-Tenant-ID` → guard lookup `user_tenants` → inject `req.user = { id, email, role, tenant_id }`.
 
 ### User-Tenant Many-to-Many
 
@@ -190,44 +179,42 @@ Khi query staff/managers trong một tenant, dùng `user_tenants` thay vì `user
 
 ### Authentication Flow
 
-**Self-registration:**
-1. `POST /auth/register` với `{ email, password, full_name, tenant_name, tenant_slug? }`
-2. Tạo auth user → tạo tenant mới → insert `user_tenants` với role `business_owner`
-3. Trả `{ access_token, user, tenant }` ngay lập tức
-4. `tenant_slug` auto-generate từ `tenant_name` nếu không truyền (bỏ dấu tiếng Việt, lowercase, dấu gạch ngang)
-5. Lỗi: `EMAIL_ALREADY_EXISTS` hoặc `SLUG_ALREADY_EXISTS` nếu trùng
+Chỉ dùng **Google OAuth** (PKCE). Không có email/password.
 
-**Login (một tenant):**
-1. `POST /auth/login` → trả `access_token` + `tenants` array (1 phần tử)
+**Login / Đăng ký lần đầu (Google):**
+1. Frontend gọi `supabase.auth.signInWithOAuth({ provider: 'google' })` → redirect sang Google
+2. Google callback → Supabase trả Supabase JWT
+3. Frontend gọi `GET /auth/profile` với Supabase JWT
+   - User đã có tenant → trả profile bình thường → navigate home theo role
+   - User chưa có tenant (mới) → trả `{ requires_onboarding: true }` → frontend redirect `/setup-tenant`
+4. `/setup-tenant`: gọi `POST /auth/complete-google-onboarding { access_token, tenant_name, tenant_slug? }`
+   - Tạo tenant + insert `user_tenants` role `business_owner`
+   - Trả `{ access_token, user, tenant }`
+   - `tenant_slug` auto-generate nếu không truyền; lỗi `SLUG_ALREADY_EXISTS` nếu trùng
 
-**Login (nhiều tenant):**
-1. `POST /auth/login` → trả `{ user, tenants, requires_tenant_selection: true }`
-2. `POST /auth/select-tenant` với `{ user_id, tenant_id }` → trả `access_token`
-   - Redis key `auth_pending:{userId}` TTL 5 phút, xóa sau khi dùng
+**Chọn tenant (multi-tenant):**
+- Frontend lưu `tenant_id` vào local storage (`X-Tenant-ID` header cho mọi request sau đó)
+- `GET /auth/profile` + header `X-Tenant-ID` → trả profile với `role` từ `user_tenants`
 
 **Superadmin:**
-1. `POST /auth/login` → trả `access_token` ngay (tenant_id: null)
-
-Gửi header: `Authorization: Bearer <token>`; `JwtStrategy` validate → inject vào `@CurrentUser()`
+- Vẫn dùng Supabase password auth nội bộ; không có tenant_id trong header
 
 ### Invitation Flow
 
 Khi `POST /staff/invite`:
-- **User đã có tài khoản** (email tồn tại trong `users`) → tạo invitation `delivery='in_app'`, đồng thời:
+- **User đã có tài khoản** (email tồn tại trong `public.users`) → tạo invitation `delivery='in_app'`, đồng thời:
   - Gửi push notification `invitation_received`
   - Gửi email với link `{APP_FRONTEND_URL}/accept-invitation?token=...`
-- **User chưa có tài khoản** → tạo invitation `delivery='email'`, gửi email với link đăng ký
+- **User chưa có tài khoản** → tạo invitation `delivery='email'`, gửi email với link `{APP_FRONTEND_URL}/accept-invitation?token=...`
 
 Accept invitation — hai cách:
-1. **Mobile app** (authenticated): `PATCH /staff/invitations/:id/accept` — dùng `id` của invitation, yêu cầu JWT
-2. **Email link** (public): `PATCH /staff/accept-invitation/:token` — dùng `token` từ email, không cần auth
+1. **Mobile app** (authenticated, existing user): `PATCH /staff/invitations/:id/accept` — dùng `id` của invitation, yêu cầu JWT
+2. **Email link** (new user hoặc existing): `POST /staff/accept-invitation-google { access_token, invitation_token }` — public, không cần auth trước
+   - Validate Google token → lấy email → khớp với invitation email
+   - Upsert `public.users`, insert `user_tenants`, đánh dấu invitation `accepted`
+   - Trả `{ user, tenant }`
 
-Khi register qua email (`POST /staff/register`):
-- Insert vào `users`, sau đó insert vào `user_tenants`
-
-### Password Reset OTP
-
-OTP 6 số lưu Redis với key `otp:{email}`, TTL 10 phút. Email gửi qua Resend.
+Frontend `/accept-invitation?token=`: hiện nút "Đăng nhập với Google để chấp nhận" → lưu token vào `sessionStorage` → OAuth → callback tự động gọi `accept-invitation-google`.
 
 ### File Upload (Supabase Storage)
 

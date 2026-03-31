@@ -1,25 +1,30 @@
 import { Controller, Post, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { IsString, IsOptional } from 'class-validator';
 import { AuthService } from './auth.service.js';
-import { LoginDto } from './dto/login.dto.js';
-import { ChangePasswordDto } from './dto/change-password.dto.js';
-import { ForgotPasswordDto, ResetPasswordDto, UpdateDeviceTokenDto } from './dto/reset-password.dto.js';
-import { RegisterDto } from './dto/register.dto.js';
+import { GoogleAuthDto } from './dto/google-auth.dto.js';
+import { CompleteGoogleOnboardingDto } from './dto/complete-google-onboarding.dto.js';
 import { CreateTenantDto } from './dto/create-tenant.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+
+class UpdateDeviceTokenDto {
+  @IsString()
+  @IsOptional()
+  device_token: string | null;
+}
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  @Post('google')
+  googleLogin(@Body() dto: GoogleAuthDto) {
+    return this.authService.googleLogin(dto);
   }
 
-  @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  @Post('complete-google-onboarding')
+  completeGoogleOnboarding(@Body() dto: CompleteGoogleOnboardingDto) {
+    return this.authService.completeGoogleOnboarding(dto);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -32,22 +37,6 @@ export class AuthController {
   @Get('profile')
   getProfile(@CurrentUser() user: { id: string; tenant_id: string | null }) {
     return this.authService.getProfile(user.id, user.tenant_id);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch('change-password')
-  changePassword(@CurrentUser() user: { id: string; email: string }, @Body() dto: ChangePasswordDto) {
-    return this.authService.changePassword(user.id, user.email, dto);
-  }
-
-  @Post('forgot-password')
-  forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto);
-  }
-
-  @Post('reset-password')
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
   }
 
   @UseGuards(JwtAuthGuard)

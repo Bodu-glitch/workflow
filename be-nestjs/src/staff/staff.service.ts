@@ -4,13 +4,14 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { EmailService } from '../email/email.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { InviteStaffDto } from './dto/invite-staff.dto.js';
-import { RegisterStaffDto } from './dto/register-staff.dto.js';
+import { AcceptInvitationGoogleDto } from './dto/accept-invitation-google.dto.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 
 @Injectable()
@@ -121,82 +122,77 @@ export class StaffService {
     return { message: 'Invitation sent', invitation_id: data.id, token };
   }
 
-  async register(dto: RegisterStaffDto) {
-    const { data: invitation, error } = await this.supabase.db
+  async acceptInvitationGoogle(dto: AcceptInvitationGoogleDto) {
+    // Validate Google token
+    const { data: { user: googleUser }, error } = await this.supabase.db.auth.getUser(dto.access_token);
+    if (error || !googleUser) {
+      throw new UnauthorizedException({ error: { code: 'INVALID_TOKEN', message: 'Token không hợp lệ' } });
+    }
+
+    // Get invitation
+    const { data: invitation } = await this.supabase.db
       .from('invitations')
       .select('*')
-      .eq('token', dto.token)
+      .eq('token', dto.invitation_token)
       .eq('status', 'pending')
-      .eq('delivery', 'email')
       .single();
 
-    if (error || !invitation) {
-      throw new BadRequestException({ code: 'INVALID_TOKEN', message: 'Invalid or expired invitation token' });
+    if (!invitation) {
+      throw new BadRequestException({ error: { code: 'INVALID_TOKEN', message: 'Lời mời không hợp lệ hoặc đã hết hạn' } });
     }
 
     if (new Date(invitation.expires_at) < new Date()) {
       await this.supabase.db.from('invitations').update({ status: 'expired' }).eq('id', invitation.id);
-      throw new BadRequestException({ code: 'TOKEN_EXPIRED', message: 'Invitation token has expired' });
+      throw new BadRequestException({ error: { code: 'TOKEN_EXPIRED', message: 'Lời mời đã hết hạn' } });
     }
 
-    // Check email not taken globally
-    const { data: existingUser } = await this.supabase.db
-      .from('users')
-      .select('id')
-      .eq('email', invitation.email)
-      .single();
-
-    if (existingUser) {
-      throw new ConflictException({ code: 'EMAIL_ALREADY_EXISTS', message: 'Email already registered' });
+    if (invitation.email.toLowerCase() !== googleUser.email!.toLowerCase()) {
+      throw new BadRequestException({ error: { code: 'EMAIL_MISMATCH', message: 'Email Google không khớp với lời mời' } });
     }
 
-    // Create user in Supabase Auth (trigger auto-creates public.users with role='staff')
-    const { data: authData, error: authError } = await this.supabase.db.auth.admin.createUser({
-      email: invitation.email,
-      password: dto.password,
-      email_confirm: true,
-      user_metadata: { full_name: dto.full_name },
-    });
+    const fullName = googleUser.user_metadata?.full_name ?? googleUser.user_metadata?.name ?? googleUser.email!;
 
-    if (authError) throw new BadRequestException(authError.message);
-
-    // Update public.users with full_name and phone
+    // Upsert public.users
     await this.supabase.db
       .from('users')
-      .update({ full_name: dto.full_name, phone: dto.phone ?? null })
-      .eq('id', authData.user.id);
+      .upsert(
+        { id: googleUser.id, email: googleUser.email!, full_name: fullName },
+        { onConflict: 'id' },
+      );
 
-    // Add user to tenant via user_tenants
-    await this.supabase.db.from('user_tenants').insert({
-      user_id: authData.user.id,
+    // Add to tenant (ignore duplicate)
+    const { error: memberError } = await this.supabase.db.from('user_tenants').insert({
+      user_id: googleUser.id,
       tenant_id: invitation.tenant_id,
       role: invitation.role,
     });
 
-    await this.supabase.db
-      .from('invitations')
-      .update({ status: 'accepted' })
-      .eq('id', invitation.id);
-
-    const { data: sessionData, error: signInError } = await this.supabase.authClient.auth.signInWithPassword({
-      email: invitation.email,
-      password: dto.password,
-    });
-
-    if (signInError || !sessionData.session) {
-      throw new BadRequestException('Registration succeeded but session creation failed');
+    if (memberError && !memberError.message.includes('duplicate')) {
+      throw new BadRequestException(memberError.message);
     }
 
+    await this.supabase.db.from('invitations').update({ status: 'accepted' }).eq('id', invitation.id);
+
+    await this.supabase.db
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', googleUser.id);
+
+    const { data: tenant } = await this.supabase.db
+      .from('tenants')
+      .select('id, name, slug')
+      .eq('id', invitation.tenant_id)
+      .single();
+
     return {
-      access_token: sessionData.session.access_token,
-      refresh_token: sessionData.session.refresh_token,
       user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        full_name: dto.full_name,
+        id: googleUser.id,
+        email: googleUser.email,
+        full_name: fullName,
         role: invitation.role,
         tenant_id: invitation.tenant_id,
       },
+      tenant,
     };
   }
 

@@ -1,14 +1,18 @@
 import { authApi } from '@/lib/api/auth';
+import { staffApi } from '@/lib/api/staff';
 import { tenantStore, tokenStore } from '@/lib/api/client';
 import { supabase } from '@/lib/supabase';
 import type { TenantOption, UserProfile, UserRole } from '@/types/api';
 import type { Session } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
+
+const PENDING_INVITE_KEY = 'pending_invitation_token';
 
 interface PendingSelection {
   userId: string;
@@ -20,15 +24,16 @@ interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
   pendingSelection: PendingSelection | null;
+  needsOnboarding: boolean;
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginWithGoogleForInvitation: (invitationToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  register: (email: string, password: string, fullName: string, tenantName: string, tenantSlug?: string) => Promise<void>;
   selectTenant: (userId: string, tenantId: string) => Promise<void>;
+  switchTenant: () => Promise<void>;
   role: UserRole | null;
 }
 
@@ -40,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user: null,
     isLoading: true,
     pendingSelection: null,
+    needsOnboarding: false,
   });
 
   const processedSessionRef = useRef<string | null>(null);
@@ -49,10 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[Auth] onAuthStateChange event:', _event, 'session:', !!session);
       if (!session) {
         processedSessionRef.current = null;
-        setState({ token: null, user: null, isLoading: false, pendingSelection: null });
+        setState({ token: null, user: null, isLoading: false, pendingSelection: null, needsOnboarding: false });
         return;
       }
-      // Skip duplicate: same access_token fired by SIGNED_IN + TOKEN_REFRESHED or double Linking trigger
       if (processedSessionRef.current === session.access_token) return;
       processedSessionRef.current = session.access_token;
       try {
@@ -60,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.log('[Auth] handleSupabaseSession error:', err);
         processedSessionRef.current = null;
-        setState({ token: null, user: null, isLoading: false, pendingSelection: null });
+        setState({ token: null, user: null, isLoading: false, pendingSelection: null, needsOnboarding: false });
       }
     });
     return () => subscription.unsubscribe();
@@ -73,11 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[Auth] handleDeepLink url:', url?.substring(0, 120));
       if (!url) return;
 
-      // Normalize URL: some Android deep links omit '//' (e.g. "taskmanagement:?code=...")
-      // Supabase exchangeCodeForSession requires '://' to parse as URL
       const normalized = url.includes('://') ? url : url.replace(':', '://');
 
-      // PKCE flow: extract code param and exchange
       try {
         const parsed = new URL(normalized);
         const code = parsed.searchParams.get('code');
@@ -87,7 +89,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('[Auth] handleDeepLink exchangeCodeForSession result - error:', JSON.stringify(error), 'session:', !!data?.session);
           return;
         }
-        // Implicit flow fallback: access_token in fragment
         const fragment = parsed.hash.substring(1);
         if (fragment.includes('access_token')) {
           console.log('[Auth] handleDeepLink implicit token found');
@@ -99,10 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // App opened fresh via deep link (Android OAuth redirect)
     Linking.getInitialURL().then((url) => { if (url) handleDeepLink(url); });
-
-    // App already running, receives deep link
     const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
     return () => sub.remove();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,85 +111,91 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await tokenStore.set(session.access_token);
     await tokenStore.setRefresh(session.refresh_token);
 
-    const { data: profileData } = await authApi.profile();
-    const profile = profileData as UserProfile & { tenants?: TenantOption[] };
-    const tenants = profile.tenants ?? [];
-    console.log('[Auth] profile fetched, role:', profile.role, 'tenants:', tenants.length);
+    // Check for pending invitation token (new user accepting invite via email link)
+    const pendingInvite = Platform.OS === 'web'
+      ? (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(PENDING_INVITE_KEY) : null)
+      : await AsyncStorage.getItem(PENDING_INVITE_KEY);
 
-    if (profile.role === 'superadmin') {
-      setState({ token: session.access_token, user: profile as UserProfile, isLoading: false, pendingSelection: null });
+    if (pendingInvite) {
+      // Clear it first to avoid loops
+      if (Platform.OS === 'web') {
+        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(PENDING_INVITE_KEY);
+      } else {
+        await AsyncStorage.removeItem(PENDING_INVITE_KEY);
+      }
+
+      try {
+        const { data } = await staffApi.acceptInvitationGoogle(session.access_token, pendingInvite);
+        await tenantStore.set(data.tenant.id);
+        const { data: profileData } = await authApi.profile();
+        const profile = profileData as UserProfile & { tenants?: TenantOption[] };
+        setState({ token: session.access_token, user: profile, isLoading: false, pendingSelection: null, needsOnboarding: false });
+        return;
+      } catch (err) {
+        console.log('[Auth] acceptInvitationGoogle error:', err);
+        // Fall through to normal profile check
+      }
+    }
+
+    // Fetch profile
+    const { data: profileData } = await authApi.profile();
+    const profile = profileData as any;
+
+    // New Google user — needs to create a workspace
+    if (profile?.requires_onboarding) {
+      setState({ token: session.access_token, user: null, isLoading: false, pendingSelection: null, needsOnboarding: true });
       return;
     }
 
-    // If user already selected a tenant (stored in tenantStore), restore directly
+    const typedProfile = profile as UserProfile & { tenants?: TenantOption[] };
+    const tenants = typedProfile.tenants ?? [];
+    console.log('[Auth] profile fetched, role:', typedProfile.role, 'tenants:', tenants.length);
+
+    if (typedProfile.role === 'superadmin') {
+      setState({ token: session.access_token, user: typedProfile, isLoading: false, pendingSelection: null, needsOnboarding: false });
+      return;
+    }
+
     const tenantId = await tenantStore.get();
     console.log('[Auth] tenantId from store:', tenantId);
     if (tenantId) {
-      setState({ token: session.access_token, user: profile as UserProfile, isLoading: false, pendingSelection: null });
+      setState({ token: session.access_token, user: typedProfile, isLoading: false, pendingSelection: null, needsOnboarding: false });
       return;
     }
 
-    // No tenant selected yet — route through select-tenant
     console.log('[Auth] setState pendingSelection, tenants:', tenants.length);
     setState((s) => ({
       ...s,
       token: session.access_token,
       isLoading: false,
-      pendingSelection: { userId: profile.id, tenants },
+      needsOnboarding: false,
+      pendingSelection: { userId: typedProfile.id, tenants },
     }));
   };
-
-  const login = useCallback(async (email: string, password: string) => {
-    const { data } = await authApi.login(email, password);
-    const d = data as any;
-
-    await tokenStore.set(d.access_token);
-    await tokenStore.setRefresh(d.refresh_token);
-
-    // Superadmin: no tenant selection needed
-    if (d.user?.role === 'superadmin') {
-      const { data: user } = await authApi.profile();
-      setState({ token: d.access_token, user: user as UserProfile, isLoading: false, pendingSelection: null });
-      return;
-    }
-
-    // All others: always go through select-tenant
-    setState((s) => ({ ...s, token: d.access_token, pendingSelection: { userId: d.user.id, tenants: d.tenants ?? [] } }));
-  }, []);
 
   const loginWithGoogle = useCallback(async () => {
     if (Platform.OS === 'web') {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: window.location.origin, queryParams: { prompt: 'select_account' } },
       });
       if (error) throw error;
-      // onAuthStateChange handles the session after redirect
       return;
     }
 
-    // Native: use dedicated oauth-callback path so Expo Router routes within (auth) group
-    // instead of pushing index onto the root stack
     const redirectTo = makeRedirectUri({ path: 'oauth-callback' });
     console.log('[Auth] loginWithGoogle native, redirectTo:', redirectTo);
-    // Native (iOS/Android) — opens system browser, works in Expo Go
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo,
-        skipBrowserRedirect: true,
-      },
+      options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
     });
     if (error || !data.url) throw error ?? new Error('No auth URL returned');
 
     try {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
       console.log('[Auth] openAuthSessionAsync result type:', result.type);
-      // iOS / Android (when Custom Tab properly intercepts): handle directly
       if (result.type === 'success') {
         console.log('[Auth] openAuthSessionAsync success url:', result.url?.substring(0, 100));
-        // Check if Linking (handleDeepLink) already exchanged the code — happens on Android
-        // when deep link fires while Custom Tab is still open (Linking fires first)
         const { data: existingSession } = await supabase.auth.getSession();
         if (existingSession?.session) {
           console.log('[Auth] openAuthSessionAsync: session already exists, skip exchange');
@@ -213,12 +217,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.log('[Auth] openAuthSessionAsync error (Android Custom Tab may close on deep link):', err);
-      // Android: Custom Tab may close with an error when the deep link fires.
-      // The Linking listener handles the actual session in this case — ignore.
     }
-    // Android fresh-launch case: Linking listener above handles the callback
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loginWithGoogleForInvitation = useCallback(async (invitationToken: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(PENDING_INVITE_KEY, invitationToken);
+    } else {
+      await AsyncStorage.setItem(PENDING_INVITE_KEY, invitationToken);
+    }
+    await loginWithGoogle();
+  }, [loginWithGoogle]);
 
   const logout = useCallback(async () => {
     try {
@@ -230,7 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await tokenStore.remove();
     await tokenStore.removeRefresh();
     await tenantStore.remove();
-    setState({ token: null, user: null, isLoading: false, pendingSelection: null });
+    setState({ token: null, user: null, isLoading: false, pendingSelection: null, needsOnboarding: false });
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -238,33 +248,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, user: user as UserProfile }));
   }, []);
 
-  const register = useCallback(async (email: string, password: string, fullName: string, tenantName: string, tenantSlug?: string) => {
-    const { data } = await authApi.register({ email, password, full_name: fullName, tenant_name: tenantName, tenant_slug: tenantSlug });
-    const d = data as any;
-    await tokenStore.set(d.access_token);
-    await tokenStore.setRefresh(d.refresh_token);
-    const tenantId = d.tenant?.id ?? d.user?.tenant_id ?? null;
-    if (tenantId) await tenantStore.set(tenantId);
-    const { data: user } = await authApi.profile();
-    setState({ token: d.access_token, user: user as UserProfile, isLoading: false, pendingSelection: null });
-  }, []);
-
   const selectTenant = useCallback(async (_userId: string, tenantId: string) => {
     await tenantStore.set(tenantId);
     const { data: user } = await authApi.profile();
-    setState((s) => ({ ...s, user: user as UserProfile, isLoading: false, pendingSelection: null }));
+    setState((s) => ({ ...s, user: user as UserProfile, isLoading: false, pendingSelection: null, needsOnboarding: false }));
   }, []);
+
+  const switchTenant = useCallback(async () => {
+    const tenants = (state.user as any)?.tenants ?? [];
+    const userId = state.user?.id ?? '';
+    await tenantStore.remove();
+    setState((s) => ({
+      ...s,
+      user: null,
+      pendingSelection: { userId, tenants },
+    }));
+  }, [state.user]);
 
   return (
     <AuthContext.Provider
       value={{
         ...state,
-        login,
         loginWithGoogle,
+        loginWithGoogleForInvitation,
         logout,
         refreshProfile,
-        register,
         selectTenant,
+        switchTenant,
         role: state.user?.role ?? null,
       }}
     >

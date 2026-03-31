@@ -14,27 +14,14 @@ export class EmailService {
     this.frontendUrl = this.config.get<string>('APP_FRONTEND_URL', 'http://localhost:3001');
   }
 
-  async sendOtpEmail(email: string, otp: string): Promise<void> {
-    try {
-      await this.resend.emails.send({
-        from: this.from,
-        to: email,
-        subject: 'Mã OTP đặt lại mật khẩu',
-        html: `<p>Mã OTP của bạn là: <strong>${otp}</strong></p><p>Mã có hiệu lực trong 10 phút.</p>`,
-      });
-    } catch (err) {
-      console.error('[EmailService] Failed to send OTP email:', err);
-    }
-  }
-
   async sendInvitationEmail(email: string, token: string): Promise<void> {
-    const link = `${this.frontendUrl}/register?token=${token}`;
+    const link = `${this.frontendUrl}/accept-invitation?token=${token}`;
     try {
       await this.resend.emails.send({
         from: this.from,
         to: email,
         subject: 'Lời mời tham gia hệ thống',
-        html: `<p>Bạn đã được mời tham gia hệ thống. Nhấp vào liên kết bên dưới để đăng ký:</p><p><a href="${link}">${link}</a></p><p>Liên kết có hiệu lực trong 24 giờ.</p>`,
+        html: `<p>Bạn đã được mời tham gia hệ thống.</p><p>Nhấp vào liên kết bên dưới và đăng nhập bằng Google để chấp nhận lời mời:</p><p><a href="${link}">${link}</a></p><p>Liên kết có hiệu lực trong 24 giờ.</p>`,
       });
     } catch (err) {
       console.error('[EmailService] Failed to send invitation email:', err);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ActivityIndicator, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView } from '@/tw';
@@ -6,14 +6,6 @@ import { useAuth } from '@/context/auth';
 import { ApiError } from '@/lib/api/client';
 import { authApi } from '@/lib/api/auth';
 import type { TenantOption } from '@/types/api';
-
-const SESSION_DURATION = 300;
-
-function formatTime(s: number) {
-  const m = Math.floor(s / 60).toString().padStart(2, '0');
-  const sec = (s % 60).toString().padStart(2, '0');
-  return `${m}:${sec}`;
-}
 
 function RoleBadge({ role }: { role: TenantOption['role'] }) {
   const config: Record<string, { label: string; bg: string; text: string }> = {
@@ -34,32 +26,14 @@ export default function SelectTenantScreen() {
   const { pendingSelection, selectTenant, logout, token } = useAuth();
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(SESSION_DURATION);
   const [newTenantName, setNewTenantName] = useState('');
   const [creating, setCreating] = useState(false);
-  const sessionStart = useRef(Date.now());
 
   useEffect(() => {
     if (!pendingSelection) {
       router.replace(token ? '/' : '/(auth)/login');
     }
   }, [pendingSelection, token, router]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - sessionStart.current) / 1000);
-      const left = SESSION_DURATION - elapsed;
-      if (left <= 0) {
-        clearInterval(interval);
-        Alert.alert('Session Expired', 'Please log in again.', [
-          { text: 'OK', onPress: async () => { await logout(); router.replace('/(auth)/login'); } },
-        ]);
-      } else {
-        setSecondsLeft(left);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [logout, router]);
 
   async function handleSelect(tenant: TenantOption) {
     if (!pendingSelection) return;
@@ -107,13 +81,8 @@ export default function SelectTenantScreen() {
   return (
     <View className="flex-1 bg-surface">
       {/* Glass header */}
-      <View className="glass-effect px-6 pt-14 pb-4 flex-row items-center justify-between">
+      <View className="glass-effect px-6 pt-14 pb-4">
         <Text className="text-xl font-extrabold text-primary tracking-tight">Executive Kinetic</Text>
-        <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container-high">
-          <Text className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">
-            Session: {formatTime(secondsLeft)}
-          </Text>
-        </View>
       </View>
 
       {/* Title */}
@@ -127,15 +96,6 @@ export default function SelectTenantScreen() {
             : 'Welcome back. Choose an organization to continue your session.'}
         </Text>
       </View>
-
-      {/* Warning */}
-      {secondsLeft < 60 && (
-        <View className="mx-6 mb-4 px-4 py-3 bg-warning-container rounded-xl">
-          <Text className="text-sm font-semibold text-on-warning-container">
-            Session expires in {secondsLeft} seconds
-          </Text>
-        </View>
-      )}
 
       <ScrollView className="flex-1 px-6" contentContainerClassName="gap-4 pb-6">
         {pendingSelection.tenants.map((tenant) => (

@@ -164,40 +164,11 @@ export interface TenantInfo {
 
 // ─── Auth (extended) ──────────────────────────────────────────────────────────
 
-export interface RegisterInput {
-  email: string;
-  password: string;
-  full_name: string;
-  tenant_name: string;
-  tenant_slug?: string;
-}
-
-export interface RegisterResponse {
+export interface GoogleOnboardingResponse {
   access_token: string;
-  refresh_token: string;
   user: UserProfile;
   tenant: TenantInfo;
 }
-
-export interface LoginSingleResponse {
-  access_token: string;
-  refresh_token: string;
-  user: UserProfile;
-  tenants: TenantOption[];
-}
-export interface LoginMultiResponse {
-  access_token: string;
-  refresh_token: string;
-  user: { id: string; email: string; full_name: string };
-  tenants: TenantOption[];
-  requires_tenant_selection: true;
-}
-export interface LoginSuperadminResponse {
-  access_token: string;
-  refresh_token: string;
-  user: UserProfile;
-}
-export type LoginResponse = LoginSingleResponse | LoginMultiResponse | LoginSuperadminResponse;
 
 // ─── In-app invitations (received by the logged-in user) ─────────────────────
 

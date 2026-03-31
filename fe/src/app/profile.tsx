@@ -10,7 +10,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, switchTenant } = useAuth();
 
   const initials =
     user?.full_name
@@ -21,6 +21,8 @@ export default function ProfileScreen() {
       .toUpperCase() ?? 'U';
 
   const roleLabel = ROLE_LABELS[user?.role ?? ''] ?? user?.role ?? '—';
+  const currentTenant = (user as any)?.tenants?.find((t: any) => t.id === user?.tenant_id);
+  const workspaceName = currentTenant?.name ?? '—';
 
   return (
     <ScrollView className="flex-1 bg-surface">
@@ -125,6 +127,37 @@ export default function ProfileScreen() {
                 <Text className="text-on-surface-variant">📲</Text>
               </Pressable>
             )}
+          </View>
+        </View>
+
+        {/* Workspace */}
+        <View>
+          <Text className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">
+            Workspace
+          </Text>
+          <View className="bg-surface-container-lowest rounded-2xl overflow-hidden">
+            <View className="px-4 py-3 flex-row items-center gap-3 border-b border-surface-container">
+              <View className="w-8 h-8 rounded-lg bg-surface-container items-center justify-center">
+                <Text>🏢</Text>
+              </View>
+              <View className="flex-1">
+                <Text className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                  Current Workspace
+                </Text>
+                <Text className="text-sm font-medium text-on-surface" numberOfLines={1}>
+                  {workspaceName}
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={switchTenant}
+              className="px-4 py-4 flex-row items-center gap-3 active:opacity-60">
+              <View className="w-8 h-8 rounded-lg bg-surface-container items-center justify-center">
+                <Text>🔄</Text>
+              </View>
+              <Text className="text-base font-semibold text-on-surface flex-1">Đổi hoặc tạo workspace</Text>
+              <Text className="text-on-surface-variant">›</Text>
+            </Pressable>
           </View>
         </View>
 

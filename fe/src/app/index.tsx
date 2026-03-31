@@ -5,7 +5,7 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { staffApi } from '@/lib/api/staff';
 
 export default function Index() {
-  const { token, user, isLoading, pendingSelection } = useAuth();
+  const { token, user, isLoading, pendingSelection, needsOnboarding } = useAuth();
   const [inviteCheckDone, setInviteCheckDone] = useState(false);
   const [hasPendingInvites, setHasPendingInvites] = useState(false);
   const checkStarted = useRef(false);
@@ -23,6 +23,7 @@ export default function Index() {
   }, [token, user]);
 
   if (isLoading) return <LoadingScreen />;
+  if (needsOnboarding) return <Redirect href="/(auth)/setup-tenant" />;
   if (pendingSelection) return <Redirect href="/(auth)/select-tenant" />;
   if (!token || !user) return <Redirect href="/(auth)/login" />;
   if (!inviteCheckDone) return <LoadingScreen />;

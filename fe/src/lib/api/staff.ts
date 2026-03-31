@@ -24,10 +24,10 @@ export const staffApi = {
       method: 'DELETE',
     }),
 
-  register: (token: string, full_name: string, password: string, phone?: string) =>
-    apiFetch<{ data: StaffMember }>('/staff/register', {
+  acceptInvitationGoogle: (access_token: string, invitation_token: string) =>
+    apiFetch<{ data: { user: StaffMember & { tenant_id: string }; tenant: { id: string; name: string; slug: string } } }>('/staff/accept-invitation-google', {
       method: 'POST',
-      body: JSON.stringify({ token, full_name, password, phone }),
+      body: JSON.stringify({ access_token, invitation_token }),
     }),
 
   myInvitations: () =>

@@ -19,9 +19,10 @@ export class JwtAuthGuard implements CanActivate {
       .eq('id', user.id)
       .single();
 
-    if (!dbUser?.is_active) throw new UnauthorizedException();
+    // Allow new Google users (no public.users entry yet) to pass through
+    if (dbUser && !dbUser.is_active) throw new UnauthorizedException();
 
-    if (dbUser.role === 'superadmin') {
+    if (dbUser?.role === 'superadmin') {
       req.user = { id: user.id, email: user.email, role: 'superadmin', tenant_id: null };
       return true;
     }

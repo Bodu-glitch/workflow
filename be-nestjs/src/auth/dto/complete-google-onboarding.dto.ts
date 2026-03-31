@@ -1,16 +1,9 @@
-import { IsEmail, IsString, MinLength, IsNotEmpty, IsOptional, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, Matches } from 'class-validator';
 
-export class RegisterDto {
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  @MinLength(6)
-  password: string;
-
+export class CompleteGoogleOnboardingDto {
   @IsString()
   @IsNotEmpty()
-  full_name: string;
+  access_token: string;
 
   @IsString()
   @IsNotEmpty()
@@ -20,4 +13,8 @@ export class RegisterDto {
   @IsOptional()
   @Matches(/^[a-z0-9-]+$/, { message: 'tenant_slug must contain only lowercase letters, numbers, and hyphens' })
   tenant_slug?: string;
+
+  @IsString()
+  @IsOptional()
+  full_name?: string;
 }
