@@ -5,10 +5,11 @@ import { View, Text, TextInput, Pressable, ScrollView } from '@/tw';
 import { useAuth } from '@/context/auth';
 import { authApi } from '@/lib/api/auth';
 import { tenantStore } from '@/lib/api/client';
+import { router } from 'expo-router';
 import type { UserProfile, TenantOption } from '@/types/api';
 
 export default function SetupTenantScreen() {
-  const { token, selectTenant } = useAuth();
+  const { token, selectTenant, logout } = useAuth();
   const router = useRouter();
   const [tenantName, setTenantName] = useState('');
   const [tenantSlug, setTenantSlug] = useState('');
@@ -107,6 +108,14 @@ export default function SetupTenantScreen() {
           ) : (
             <Text className="text-on-primary font-bold text-base">Tạo Workspace</Text>
           )}
+        </Pressable>
+
+        <Pressable
+          onPress={async () => { await logout(); router.replace('/(auth)/login'); }}
+          disabled={loading}
+          className="w-full h-12 items-center justify-center active:opacity-60"
+        >
+          <Text className="text-sm text-on-surface-variant">Đăng xuất và dùng tài khoản khác</Text>
         </Pressable>
       </View>
     </ScrollView>

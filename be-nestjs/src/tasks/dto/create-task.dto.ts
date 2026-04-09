@@ -45,4 +45,20 @@ export class CreateTaskDto {
   @IsArray()
   @IsUUID(undefined, { each: true })
   assignee_ids?: string[];
+
+  @IsOptional()
+  @IsString()
+  customer_name?: string;
+
+  @IsOptional()
+  @IsString()
+  customer_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  customer_email?: string;
+
+  @IsOptional()
+  @IsString()
+  customer_note?: string;
 }

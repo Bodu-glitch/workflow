@@ -168,7 +168,7 @@ export default function ProfileScreen() {
           </Text>
           <View className="bg-surface-container-lowest rounded-2xl overflow-hidden">
             <Pressable
-              onPress={logout}
+              onPress={async () => { await logout(); router.replace('/(auth)/login'); }}
               className="px-4 py-4 flex-row items-center gap-3 active:opacity-60">
               <View className="w-8 h-8 rounded-lg bg-error-container items-center justify-center">
                 <Text>🚪</Text>

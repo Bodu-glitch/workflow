@@ -47,6 +47,10 @@ export interface Task {
   deadline?: string;
   cancel_reason?: string;
   reject_reason?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
+  customer_note?: string;
   created_at: string;
   assignees: TaskAssignee[];
   checkin?: CheckinRecord;
@@ -73,6 +77,10 @@ export interface CreateTaskInput {
   scheduled_at?: string;
   deadline?: string;
   assignee_ids?: string[];
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
+  customer_note?: string;
 }
 
 export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'assignee_ids'>>;

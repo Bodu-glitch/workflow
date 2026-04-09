@@ -1,0 +1,5 @@
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS customer_name  TEXT,
+  ADD COLUMN IF NOT EXISTS customer_phone TEXT,
+  ADD COLUMN IF NOT EXISTS customer_email TEXT,
+  ADD COLUMN IF NOT EXISTS customer_note  TEXT;

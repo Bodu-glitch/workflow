@@ -8,17 +8,19 @@ export default function Index() {
   const { token, user, isLoading, pendingSelection, needsOnboarding } = useAuth();
   const [inviteCheckDone, setInviteCheckDone] = useState(false);
   const [hasPendingInvites, setHasPendingInvites] = useState(false);
-  const checkStarted = useRef(false);
+  const checkedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!token || !user || checkStarted.current) return;
-    checkStarted.current = true;
+    if (!token || !user) return;
+    if (checkedTokenRef.current === token) return;
+    checkedTokenRef.current = token;
+    setInviteCheckDone(false);
     staffApi.myInvitations()
       .then(res => {
         const pending = res.data.data.filter(i => i.status === 'pending');
         setHasPendingInvites(pending.length > 0);
       })
-      .catch(() => {})
+      .catch(() => { setHasPendingInvites(false); })
       .finally(() => setInviteCheckDone(true));
   }, [token, user]);
 
@@ -32,5 +34,7 @@ export default function Index() {
   if (user.role === 'business_owner') return <Redirect href="/(bo)" />;
   if (user.role === 'operator') return <Redirect href="/(ot)" />;
   if (user.role === 'staff') return <Redirect href="/(staff)" />;
+  // role is null — tenant context missing, go to select-tenant
+  if ((user as any).tenants?.length > 0) return <Redirect href="/(auth)/select-tenant" />;
   return <Redirect href="/(auth)/login" />;
 }
