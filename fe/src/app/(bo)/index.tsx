@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { RefreshControl, ScrollView as RNScrollView } from 'react-native';
 import { router } from 'expo-router';
+import { Svg, Path, Text as SvgText } from 'react-native-svg';
 import { View, Text, Pressable, ScrollView } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
 import { notificationsApi } from '@/lib/api/notifications';
@@ -23,7 +24,58 @@ const STAT_CARDS: {
   { key: 'overdue',     label: 'Overdue',      color: '#ef4444', bgColor: '#fff1f2', trend: '⚠' },
 ];
 
-const BAR_DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+function PieChart({ slices, size = 140 }: {
+  slices: { value: number; color: string; label: string }[];
+  size?: number;
+}) {
+  const cx = size / 2, cy = size / 2, r = size / 2 - 4;
+  const total = slices.reduce((s, sl) => s + sl.value, 0);
+  if (total === 0) {
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: size - 8, height: size - 8, borderRadius: (size - 8) / 2, backgroundColor: '#dce9ff' }} />
+      </View>
+    );
+  }
+  const toRad = (deg: number) => (deg - 90) * (Math.PI / 180);
+  let paths: React.ReactNode[] = [];
+  let startAngle = 0;
+  slices.forEach((sl, i) => {
+    if (sl.value === 0) return;
+    const angle = (sl.value / total) * 360;
+    const endAngle = startAngle + angle;
+    const x1 = cx + r * Math.cos(toRad(startAngle));
+    const y1 = cy + r * Math.sin(toRad(startAngle));
+    const midAngle = startAngle + angle / 2;
+    const labelR = r * 0.65;
+    const lx = cx + labelR * Math.cos(toRad(midAngle));
+    const ly = cy + labelR * Math.sin(toRad(midAngle));
+    const pct = Math.round((sl.value / total) * 100);
+    let d: string;
+    if (angle > 359.99) {
+      // Full circle: two 180° arcs to avoid degenerate SVG arc (start === end point)
+      const xMid = cx + r * Math.cos(toRad(startAngle + 180));
+      const yMid = cy + r * Math.sin(toRad(startAngle + 180));
+      d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 1 1 ${xMid} ${yMid} A ${r} ${r} 0 1 1 ${x1} ${y1} Z`;
+      paths.push(
+        <Path key={i} d={d} fill={sl.color} />,
+        <SvgText key={`t${i}`} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="11" fontWeight="800">100%</SvgText>,
+      );
+    } else {
+      const large = angle > 180 ? 1 : 0;
+      const x2 = cx + r * Math.cos(toRad(endAngle));
+      const y2 = cy + r * Math.sin(toRad(endAngle));
+      d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+      paths.push(
+        <Path key={i} d={d} fill={sl.color} />,
+        pct >= 8 ? <SvgText key={`t${i}`} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="11" fontWeight="800">{pct}%</SvgText> : null,
+      );
+    }
+    startAngle = endAngle;
+  });
+  return <Svg width={size} height={size}>{paths}</Svg>;
+}
 
 function emptyStats() {
   return { todo: 0, in_progress: 0, done: 0, cancelled: 0, rejected: 0, overdue: 0 };
@@ -36,68 +88,6 @@ function getGreeting() {
   return 'Good Evening';
 }
 
-function DonutRing({ percentage, size = 90, strokeWidth = 11 }: { percentage: number; size?: number; strokeWidth?: number }) {
-  const half = size / 2;
-  const r1 = Math.min(percentage, 50) / 50;
-  const r2 = Math.max(0, percentage - 50) / 50;
-
-  // Angle in degrees for each segment
-  const angle1 = r1 * 180 - 135; // right half rotation
-  const angle2 = r2 * 180 - 135; // left half rotation
-
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Background ring */}
-      <View
-        style={{
-          position: 'absolute',
-          width: size, height: size,
-          borderRadius: half,
-          borderWidth: strokeWidth,
-          borderColor: '#dce9ff',
-        }}
-      />
-
-      {/* Right half fill */}
-      <View style={{ position: 'absolute', width: half, height: size, left: half, overflow: 'hidden' }}>
-        <View
-          style={{
-            position: 'absolute',
-            left: -half, top: 0,
-            width: size, height: size,
-            borderRadius: half,
-            borderWidth: strokeWidth,
-            borderColor: '#1E40AF',
-            borderLeftColor: 'transparent',
-            borderBottomColor: r1 < 1 ? 'transparent' : '#1E40AF',
-            transform: [{ rotate: `${angle1}deg` }],
-          }}
-        />
-      </View>
-
-      {/* Left half fill (only when > 50%) */}
-      {percentage > 50 && (
-        <View style={{ position: 'absolute', width: half, height: size, left: 0, overflow: 'hidden' }}>
-          <View
-            style={{
-              position: 'absolute',
-              left: 0, top: 0,
-              width: size, height: size,
-              borderRadius: half,
-              borderWidth: strokeWidth,
-              borderColor: '#1E40AF',
-              borderRightColor: 'transparent',
-              borderTopColor: r2 < 1 ? 'transparent' : '#1E40AF',
-              transform: [{ rotate: `${angle2}deg` }],
-            }}
-          />
-        </View>
-      )}
-
-      <Text style={{ fontSize: 15, fontWeight: '800', color: '#0d1c2e' }}>{percentage}%</Text>
-    </View>
-  );
-}
 
 export default function BODashboardScreen() {
   const { user } = useAuth();
@@ -117,13 +107,19 @@ export default function BODashboardScreen() {
     queryFn: () => tasksApi.list({ page: 1, limit: 3 }),
   });
 
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+  const { data: todayData } = useQuery({
+    queryKey: ['dashboard-today'],
+    queryFn: () => tasksApi.dashboard(todayStart.toISOString(), todayEnd.toISOString()),
+  });
+
   if (isLoading) return <LoadingScreen />;
   if (isError) return <ErrorView onRetry={refetch} />;
 
-  const stats = data?.data ?? emptyStats();
+  const stats = data?.data?.summary ?? emptyStats();
+  const todayStats = todayData?.data?.summary ?? emptyStats();
   const total = stats.todo + stats.in_progress + stats.done + stats.cancelled + stats.rejected + stats.overdue;
-  const active = stats.todo + stats.in_progress;
-  const activePercent = total > 0 ? Math.round((active / total) * 100) : 0;
   const unreadCount = unreadData?.data?.unread_count ?? 0;
 
   const currentTenant = user?.tenants?.find((t) => t.id === user.tenant_id) ?? user?.tenants?.[0];
@@ -133,18 +129,6 @@ export default function BODashboardScreen() {
     user?.role === 'business_owner' ? 'Business Owner'
     : user?.role === 'operator' ? 'Operator'
     : user?.full_name ?? 'User';
-
-  // Proportional bar heights for weekly chart (current week's last day = today's stats)
-  const maxStat = Math.max(stats.todo, stats.in_progress, stats.done, 1);
-  const barHeights = [
-    Math.round((stats.done / maxStat) * 48) + 8,
-    Math.round((stats.in_progress / maxStat) * 48) + 8,
-    Math.round((stats.todo / maxStat) * 48) + 8,
-    Math.round((stats.done / maxStat) * 40) + 8,
-    Math.round((stats.in_progress / maxStat) * 44) + 8,
-    Math.round((stats.overdue / maxStat) * 32) + 8,
-    Math.max(total, 8) > 0 ? 56 : 8,
-  ];
 
   const statValues: Record<'total' | 'in_progress' | 'done' | 'overdue', number> = {
     total,
@@ -205,63 +189,38 @@ export default function BODashboardScreen() {
         </RNScrollView>
 
         <View className="px-5 gap-4 pb-24">
-          {/* Weekly Productivity */}
+          {/* Today Task */}
           <View className="bg-surface-container-lowest rounded-2xl p-4">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-base font-bold text-on-surface">Weekly Productivity</Text>
-              <Text className="text-xs text-on-surface-variant">...</Text>
-            </View>
-            <View className="flex-row items-end justify-between" style={{ height: 72 }}>
-              {BAR_DAYS.map((day, i) => {
-                const isToday = i === 6;
-                return (
-                  <View key={i} className="items-center gap-1" style={{ flex: 1 }}>
-                    <View
-                      style={{
-                        width: 24,
-                        height: barHeights[i],
-                        borderRadius: 6,
-                        backgroundColor: isToday ? '#1E40AF' : '#dce9ff',
-                      }}
-                    />
-                    <Text style={{ fontSize: 10, color: isToday ? '#1E40AF' : '#94a3b8', fontWeight: isToday ? '700' : '400' }}>
-                      {day}
-                    </Text>
+            <Text className="text-base font-bold text-on-surface mb-4">Today Task</Text>
+            {(() => {
+              const todayTotal = todayStats.todo + todayStats.in_progress + todayStats.done + todayStats.overdue;
+              const pct = (n: number) => todayTotal > 0 ? Math.round((n / todayTotal) * 100) : 0;
+              const rows = [
+                { label: 'Active',      value: todayStats.todo,        color: '#1E40AF' },
+                { label: 'Progressing', value: todayStats.in_progress, color: '#f59e0b' },
+                { label: 'Completed',   value: todayStats.done,        color: '#10b981' },
+                { label: 'Overdue',     value: todayStats.overdue,     color: '#ef4444' },
+              ] as const;
+              return (
+                <View className="flex-row items-center gap-5">
+                  <PieChart slices={[...rows]} size={140} />
+                  <View className="gap-2.5 flex-1">
+                    {rows.map(({ label, value, color }) => (
+                      <View key={label} className="flex-row items-center justify-between">
+                        <View className="flex-row items-center gap-2">
+                          <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                          <Text className="text-sm text-on-surface-variant">{label}</Text>
+                        </View>
+                        <View className="flex-row items-center gap-2">
+                          <Text className="text-xs text-on-surface-variant">{value}</Text>
+                          <Text className="text-sm font-bold" style={{ color }}>{pct(value)}%</Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Task Distribution */}
-          <View className="bg-surface-container-lowest rounded-2xl p-4">
-            <Text className="text-base font-bold text-on-surface mb-4">Task Distribution</Text>
-            <View className="flex-row items-center gap-5">
-              <DonutRing percentage={activePercent} />
-              <View className="gap-2 flex-1">
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#1E40AF' }} />
-                    <Text className="text-sm text-on-surface-variant">Active</Text>
-                  </View>
-                  <Text className="text-sm font-bold text-on-surface">{active}</Text>
                 </View>
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#dce9ff' }} />
-                    <Text className="text-sm text-on-surface-variant">Completed</Text>
-                  </View>
-                  <Text className="text-sm font-bold text-on-surface">{stats.done}</Text>
-                </View>
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#fecaca' }} />
-                    <Text className="text-sm text-on-surface-variant">Overdue</Text>
-                  </View>
-                  <Text className="text-sm font-bold text-on-surface">{stats.overdue}</Text>
-                </View>
-              </View>
-            </View>
+              );
+            })()}
           </View>
 
           {/* Critical Activities */}
