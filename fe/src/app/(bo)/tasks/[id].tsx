@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
@@ -35,9 +36,27 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 export default function BOTaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
+  const navigation = useNavigation();
   const [reason, setReason] = useState('');
   const [showCancelInput, setShowCancelInput] = useState(false);
   const [showRejectInput, setShowRejectInput] = useState(false);
+
+  // Khi user switch sang tab khác → tự back về task list
+  useEffect(() => {
+    const parent = navigation.getParent();
+    if (!parent) return;
+    let backing = false;
+    const unsubscribe = parent.addListener('state', () => {
+      if (backing) return;
+      const state = parent.getState();
+      const activeRouteName = state?.routes[state.index]?.name;
+      if (activeRouteName !== 'tasks') {
+        backing = true;
+        router.back();
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
   const [showStaffPicker, setShowStaffPicker] = useState(false);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
