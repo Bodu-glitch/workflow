@@ -1,15 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
-import { staffApi } from '@/lib/api/staff';
 import { auditApi } from '@/lib/api/audit';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 import { ApiError } from '@/lib/api/client';
+import { StaffPickerModal } from '@/components/tasks/StaffPickerModal';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -35,9 +36,28 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 export default function BOTaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
+  const navigation = useNavigation();
   const [reason, setReason] = useState('');
   const [showCancelInput, setShowCancelInput] = useState(false);
   const [showRejectInput, setShowRejectInput] = useState(false);
+
+  // Khi user switch sang tab khác → tự back về task list
+  useEffect(() => {
+    const parent = navigation.getParent();
+    if (!parent) return;
+    let backing = false;
+    const unsubscribe = parent.addListener('state', () => {
+      if (backing) return;
+      const state = parent.getState();
+      const activeRouteName = state?.routes[state.index]?.name;
+      if (activeRouteName !== 'tasks') {
+        backing = true;
+        router.back();
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
+  const [showStaffPicker, setShowStaffPicker] = useState(false);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['task', id],
@@ -48,12 +68,6 @@ export default function BOTaskDetailScreen() {
   const { data: auditData } = useQuery({
     queryKey: ['audit-task', id],
     queryFn: () => auditApi.byTask(id),
-    select: (d) => d.data,
-  });
-
-  const { data: staffData } = useQuery({
-    queryKey: ['staff'],
-    queryFn: () => staffApi.list(),
     select: (d) => d.data,
   });
 
@@ -76,24 +90,32 @@ export default function BOTaskDetailScreen() {
     onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to reject'),
   });
 
-  const assignMutation = useMutation({
-    mutationFn: (staffId: string) => tasksApi.assign(id, [staffId]),
-    onSuccess: invalidate,
-    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to assign'),
-  });
-
   const unassignMutation = useMutation({
     mutationFn: (staffId: string) => tasksApi.unassign(id, staffId),
     onSuccess: invalidate,
     onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to unassign'),
   });
 
+  async function handleStaffPickerConfirm(selectedIds: string[]) {
+    try {
+      const currentIds = new Set((data?.assignees ?? []).map((a: any) => a.id));
+      const toAdd = selectedIds.filter((sid) => !currentIds.has(sid));
+      const toRemove = [...currentIds].filter((cid) => !selectedIds.includes(cid as string));
+      if (toAdd.length > 0) await tasksApi.assign(id, toAdd);
+      for (const sid of toRemove) await tasksApi.unassign(id, sid as string);
+      invalidate();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to update assignees');
+    } finally {
+      setShowStaffPicker(false);
+    }
+  }
+
   if (isLoading) return <LoadingScreen />;
   if (isError || !data) return <ErrorView onRetry={refetch} />;
 
   const task = data;
-  const assignedIds = (task.assignees ?? []).map((a) => a.id);
-  const unassignedStaff = (staffData ?? []).filter((s) => !assignedIds.includes(s.id));
+  const assignedIds = (task.assignees ?? []).map((a: any) => a.id);
   const canModify = task.status !== 'cancelled' && task.status !== 'rejected' && task.status !== 'done';
 
   return (
@@ -200,9 +222,9 @@ export default function BOTaskDetailScreen() {
         {/* Assignees */}
         <Section title="Assigned Staff">
           {(task.assignees?.length ?? 0) === 0 ? (
-            <Text className="text-sm text-on-surface-variant">No assignees</Text>
+            <Text className="text-sm text-on-surface-variant mb-3">No assignees</Text>
           ) : (
-            task.assignees!.map((a) => (
+            task.assignees!.map((a: any) => (
               <View key={a.id} className="flex-row items-center justify-between py-2.5">
                 <View className="flex-row items-center gap-3">
                   <View className="w-8 h-8 rounded-full bg-surface-container-high items-center justify-center">
@@ -218,21 +240,14 @@ export default function BOTaskDetailScreen() {
               </View>
             ))
           )}
-          {canModify && unassignedStaff.length > 0 && (
-            <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: 'rgba(195,198,214,0.3)' }}>
-              <Text className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-                Add Staff
-              </Text>
-              {unassignedStaff.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => assignMutation.mutate(s.id)}
-                  className="py-2 active:opacity-60"
-                >
-                  <Text className="text-sm text-primary font-semibold">+ {s.full_name}</Text>
-                </Pressable>
-              ))}
-            </View>
+          {canModify && (
+            <Pressable
+              onPress={() => setShowStaffPicker(true)}
+              className="mt-2 h-11 rounded-xl flex-row items-center justify-center gap-2 active:opacity-80"
+              style={{ backgroundColor: '#1E40AF' }}
+            >
+              <Text className="text-white font-bold text-sm">+ Assign Staff</Text>
+            </Pressable>
           )}
         </Section>
 
@@ -335,6 +350,13 @@ export default function BOTaskDetailScreen() {
 
         <View className="h-8" />
       </ScrollView>
+
+      <StaffPickerModal
+        visible={showStaffPicker}
+        selected={assignedIds}
+        onConfirm={(ids) => handleStaffPickerConfirm(ids)}
+        onClose={() => setShowStaffPicker(false)}
+      />
     </View>
   );
 }

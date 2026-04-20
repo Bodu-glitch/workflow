@@ -29,7 +29,7 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 
 export const tasksApi = {
   dashboard: (from?: string, to?: string) =>
-    apiFetch<{ data: DashboardStats }>(`/tasks/dashboard${buildQuery({ from, to })}`),
+    apiFetch<{ data: { summary: DashboardStats } }>(`/tasks/dashboard${buildQuery({ from, to })}`),
 
   list: (filters: TaskFilters = {}) =>
     apiFetch<PaginatedResponse<Task>>(`/tasks${buildQuery(filters as Record<string, string | number | undefined>)}`),

@@ -78,21 +78,10 @@ export default function TaskManagerScreen() {
 
   return (
     <View className="flex-1 bg-surface-container-low">
-      {/* Glass Header */}
+      {/* Header */}
       <View className="glass-effect px-5 pt-14 pb-3">
-        <View className="flex-row items-center justify-between mb-4">
-          <Pressable onPress={() => router.back()} className="active:opacity-60 mr-3">
-            <Text className="text-primary font-semibold">← Back</Text>
-          </Pressable>
-          <Text className="text-xl font-extrabold text-on-surface tracking-tight flex-1">
-            Task Portfolio
-          </Text>
-          <Pressable
-            onPress={() => router.push('/(bo)/tasks/create')}
-            className="kinetic-gradient w-9 h-9 rounded-full items-center justify-center active:opacity-80"
-          >
-            <Text className="text-on-primary text-xl font-bold">+</Text>
-          </Pressable>
+        <View className="mb-4">
+          <Text className="text-xl font-extrabold text-on-surface tracking-tight">Tasks</Text>
         </View>
 
         {/* Filter chips */}
@@ -152,6 +141,15 @@ export default function TaskManagerScreen() {
           }
         />
       )}
+
+      {/* FAB */}
+      <Pressable
+        onPress={() => router.push('/(bo)/tasks/create')}
+        className="absolute bottom-6 right-5 w-14 h-14 rounded-full items-center justify-center shadow-lg active:opacity-80"
+        style={{ backgroundColor: '#1E40AF' }}
+      >
+        <Text className="text-white text-3xl font-light" style={{ lineHeight: 36 }}>+</Text>
+      </Pressable>
     </View>
   );
 }

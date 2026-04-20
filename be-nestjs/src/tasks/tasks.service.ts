@@ -30,6 +30,26 @@ export class TasksService {
     private config: ConfigService,
   ) {}
 
+  private transformTask(raw: any) {
+    const { task_assignments, checkins, ...rest } = raw;
+    const assignees = (task_assignments ?? []).map((ta: any) => ({
+      id: ta.users?.id ?? ta.user_id,
+      full_name: ta.users?.full_name ?? '',
+      avatar_url: ta.users?.avatar_url ?? null,
+    }));
+    const checkin = checkins != null
+      ? (checkins as any[]).find((c) => c.type === 'checkin') ?? null
+      : undefined;
+    const checkout = checkins != null
+      ? (checkins as any[]).find((c) => c.type === 'checkout') ?? null
+      : undefined;
+    return {
+      ...rest,
+      assignees,
+      ...(checkins != null ? { checkin, checkout } : {}),
+    };
+  }
+
   async createTask(dto: CreateTaskDto, user: CurrentUser) {
     const { assignee_ids, ...taskData } = dto;
 
@@ -76,7 +96,7 @@ export class TasksService {
       });
     }
 
-    return task;
+    return this.getTask(task.id, user);
   }
 
   async listTasks(user: CurrentUser, pagination: PaginationDto, filters: {
@@ -108,7 +128,7 @@ export class TasksService {
       .range(offset, offset + limit - 1);
 
     if (error) throw new BadRequestException(error.message);
-    return { data, meta: { total: count, page, limit } };
+    return { data: (data ?? []).map((t) => this.transformTask(t)), meta: { total: count, page, limit } };
   }
 
   async getDashboard(user: CurrentUser, from?: string, to?: string) {
@@ -161,7 +181,7 @@ export class TasksService {
       .single();
 
     if (error || !data) throw new NotFoundException({ code: 'TASK_NOT_FOUND', message: 'Task not found' });
-    return data;
+    return this.transformTask(data);
   }
 
   async updateTask(id: string, dto: UpdateTaskDto, user: CurrentUser) {
@@ -188,7 +208,7 @@ export class TasksService {
       metadata: dto,
     });
 
-    return data;
+    return this.getTask(id, user);
   }
 
   async assignTask(id: string, dto: AssignTaskDto, user: CurrentUser) {
@@ -210,17 +230,15 @@ export class TasksService {
         assigned_by: user.id,
       }));
       await this.supabase.db.from('task_assignments').insert(assignments);
-    }
 
-    await this.supabase.db.from('audit_logs').insert({
-      tenant_id: user.tenant_id,
-      task_id: id,
-      user_id: user.id,
-      action: 'task_assigned',
-      metadata: { assignee_ids: dto.assignee_ids },
-    });
+      await this.supabase.db.from('audit_logs').insert({
+        tenant_id: user.tenant_id,
+        task_id: id,
+        user_id: user.id,
+        action: 'task_assigned',
+        metadata: { assignee_ids: newAssignees },
+      });
 
-    if (newAssignees.length > 0) {
       void this.notifications.sendPushNotification({
         user_ids: newAssignees,
         type: 'task_assigned',

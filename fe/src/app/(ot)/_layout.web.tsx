@@ -1,6 +1,6 @@
 import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import { StyleSheet } from 'react-native';
-import { Pressable, Text, View } from '@/tw';
+import { Pressable, Text } from '@/tw';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
 
 const TAB_ICONS: Record<string, { default: string; focused: string }> = {
@@ -16,9 +16,9 @@ const TAB_ICONS: Record<string, { default: string; focused: string }> = {
     default: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>`,
     focused: `<svg width="22" height="22" viewBox="0 0 24 24" fill="#1E40AF" stroke="none"><path d="M9 2a1 1 0 0 0-1 1v1H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1V3a1 1 0 0 0-1-1H9zm1 2h4v1H10V4zM8 11h8v1.5H8V11zm0 4h6v1.5H8V15z"/></svg>`,
   },
-  Audit: {
-    default: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`,
-    focused: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E40AF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  Assign: {
+    default: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>`,
+    focused: `<svg width="22" height="22" viewBox="0 0 24 24" fill="#1E40AF" stroke="none"><path d="M10 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM4 19a6 6 0 0 1 12 0H4z"/><rect x="18" y="8" width="2" height="6" rx="1"/><rect x="15" y="10" width="8" height="2" rx="1"/></svg>`,
   },
 };
 
@@ -41,22 +41,22 @@ function WebTabButton({ children, isFocused, ...props }: TabTriggerSlotProps & {
   );
 }
 
-export default function BOWebLayout() {
+export default function OTWebLayout() {
   return (
     <Tabs>
       <TabSlot style={{ flex: 1 }} />
       <TabList style={styles.tabList}>
-        <TabTrigger name="index" href="/(bo)" asChild>
+        <TabTrigger name="index" href="/(ot)" asChild>
           <WebTabButton>Dashboard</WebTabButton>
         </TabTrigger>
-        <TabTrigger name="employees" href="/(bo)/employees" asChild>
+        <TabTrigger name="employees" href="/(ot)/employees" asChild>
           <WebTabButton>Staff</WebTabButton>
         </TabTrigger>
-        <TabTrigger name="tasks" href="/(bo)/tasks" asChild>
+        <TabTrigger name="tasks" href="/(ot)/tasks" asChild>
           <WebTabButton>Tasks</WebTabButton>
         </TabTrigger>
-        <TabTrigger name="audit-log" href="/(bo)/audit-log" asChild>
-          <WebTabButton>Audit</WebTabButton>
+        <TabTrigger name="assignment" href="/(ot)/assignment" asChild>
+          <WebTabButton>Assign</WebTabButton>
         </TabTrigger>
       </TabList>
     </Tabs>

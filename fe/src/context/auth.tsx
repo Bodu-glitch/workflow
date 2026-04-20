@@ -127,8 +127,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data } = await staffApi.acceptInvitationGoogle(session.access_token, pendingInvite);
         await tenantStore.set(data.tenant.id);
+        // Fetch profile with tenant context — tenantStore is now set so X-Tenant-ID will be sent
         const { data: profileData } = await authApi.profile();
         const profile = profileData as UserProfile & { tenants?: TenantOption[] };
+        // Ensure role is populated; fallback to user data from invitation response
+        if (!profile.role && data.user) {
+          (profile as any).role = data.user.role ?? 'staff';
+        }
         setState({ token: session.access_token, user: profile, isLoading: false, pendingSelection: null, needsOnboarding: false });
         return;
       } catch (err) {
@@ -137,7 +142,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Fetch profile
+    // Fetch profile — tenantStore may already be set (returning user), so X-Tenant-ID is sent automatically
+    const tenantId = await tenantStore.get();
+    console.log('[Auth] tenantId from store:', tenantId);
+
     const { data: profileData } = await authApi.profile();
     const profile = profileData as any;
 
@@ -156,8 +164,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const tenantId = await tenantStore.get();
-    console.log('[Auth] tenantId from store:', tenantId);
     if (tenantId) {
       setState({ token: session.access_token, user: typedProfile, isLoading: false, pendingSelection: null, needsOnboarding: false });
       return;

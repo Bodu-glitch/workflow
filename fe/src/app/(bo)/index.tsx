@@ -1,155 +1,293 @@
 import { useQuery } from '@tanstack/react-query';
-import { RefreshControl } from 'react-native';
+import { RefreshControl, ScrollView as RNScrollView } from 'react-native';
 import { router } from 'expo-router';
+import { Svg, Path, Text as SvgText } from 'react-native-svg';
 import { View, Text, Pressable, ScrollView } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
+import { notificationsApi } from '@/lib/api/notifications';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
+import { AppHeader } from '@/components/AppHeader';
 import { useAuth } from '@/context/auth';
 import type { TaskStatus } from '@/types/api';
 
-type StatKey = keyof ReturnType<typeof emptyStats>;
-
 const STAT_CARDS: {
-  key: StatKey;
+  key: 'total' | 'in_progress' | 'done' | 'overdue';
   label: string;
-  pillColor: string;
-  status?: TaskStatus;
+  color: string;
+  bgColor: string;
+  trend?: string;
 }[] = [
-  { key: 'todo',        label: 'Pending',     pillColor: '#f59e0b', status: 'todo' },
-  { key: 'in_progress', label: 'In Progress', pillColor: '#1E40AF', status: 'in_progress' },
-  { key: 'done',        label: 'Done',        pillColor: '#10b981', status: 'done' },
-  { key: 'rejected',    label: 'Rejected',    pillColor: '#ba1a1a', status: 'rejected' },
-  { key: 'overdue',     label: 'Overdue',     pillColor: '#f97316' },
-  { key: 'cancelled',   label: 'Cancelled',   pillColor: '#94a3b8', status: 'cancelled' },
+  { key: 'total',       label: 'Total Tasks',  color: '#1E40AF', bgColor: '#eff6ff', trend: '+12%' },
+  { key: 'in_progress', label: 'In Progress',  color: '#f59e0b', bgColor: '#fffbeb', trend: '⚡ Stable' },
+  { key: 'done',        label: 'Completed',    color: '#10b981', bgColor: '#f0fdf4', trend: '✓' },
+  { key: 'overdue',     label: 'Overdue',      color: '#ef4444', bgColor: '#fff1f2', trend: '⚠' },
 ];
 
-const QUICK_ACTIONS = [
-  { label: 'Create Task', icon: '+',  onPress: () => router.push('/(bo)/tasks/create'), primary: true },
-  { label: 'All Tasks',   icon: '≡',  onPress: () => router.push('/(bo)/tasks/') },
-  { label: 'Employees',   icon: '👥', onPress: () => router.push('/(bo)/employees') },
-  { label: 'Audit Log',   icon: '📋', onPress: () => router.push('/(bo)/audit-log') },
-  { label: 'Overdue',     icon: '⚠', onPress: () => router.push('/(bo)/rejected-overdue') },
-];
+
+function PieChart({ slices, size = 140 }: {
+  slices: { value: number; color: string; label: string }[];
+  size?: number;
+}) {
+  const cx = size / 2, cy = size / 2, r = size / 2 - 4;
+  const total = slices.reduce((s, sl) => s + sl.value, 0);
+  if (total === 0) {
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: size - 8, height: size - 8, borderRadius: (size - 8) / 2, backgroundColor: '#dce9ff' }} />
+      </View>
+    );
+  }
+  const toRad = (deg: number) => (deg - 90) * (Math.PI / 180);
+  let paths: React.ReactNode[] = [];
+  let startAngle = 0;
+  slices.forEach((sl, i) => {
+    if (sl.value === 0) return;
+    const angle = (sl.value / total) * 360;
+    const endAngle = startAngle + angle;
+    const x1 = cx + r * Math.cos(toRad(startAngle));
+    const y1 = cy + r * Math.sin(toRad(startAngle));
+    const midAngle = startAngle + angle / 2;
+    const labelR = r * 0.65;
+    const lx = cx + labelR * Math.cos(toRad(midAngle));
+    const ly = cy + labelR * Math.sin(toRad(midAngle));
+    const pct = Math.round((sl.value / total) * 100);
+    let d: string;
+    if (angle > 359.99) {
+      // Full circle: two 180° arcs to avoid degenerate SVG arc (start === end point)
+      const xMid = cx + r * Math.cos(toRad(startAngle + 180));
+      const yMid = cy + r * Math.sin(toRad(startAngle + 180));
+      d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 1 1 ${xMid} ${yMid} A ${r} ${r} 0 1 1 ${x1} ${y1} Z`;
+      paths.push(
+        <Path key={i} d={d} fill={sl.color} />,
+        <SvgText key={`t${i}`} x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="11" fontWeight="800">100%</SvgText>,
+      );
+    } else {
+      const large = angle > 180 ? 1 : 0;
+      const x2 = cx + r * Math.cos(toRad(endAngle));
+      const y2 = cy + r * Math.sin(toRad(endAngle));
+      d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+      paths.push(
+        <Path key={i} d={d} fill={sl.color} />,
+        pct >= 8 ? <SvgText key={`t${i}`} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="11" fontWeight="800">{pct}%</SvgText> : null,
+      );
+    }
+    startAngle = endAngle;
+  });
+  return <Svg width={size} height={size}>{paths}</Svg>;
+}
 
 function emptyStats() {
   return { todo: 0, in_progress: 0, done: 0, cancelled: 0, rejected: 0, overdue: 0 };
 }
 
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good Morning';
+  if (h < 18) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
+
 export default function BODashboardScreen() {
   const { user } = useAuth();
+
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => tasksApi.dashboard(),
   });
 
+  const { data: unreadData } = useQuery({
+    queryKey: ['unread-count'],
+    queryFn: () => notificationsApi.unreadCount(),
+  });
+
+  const { data: recentTasksData } = useQuery({
+    queryKey: ['recent-tasks'],
+    queryFn: () => tasksApi.list({ page: 1, limit: 3 }),
+  });
+
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+  const { data: todayData } = useQuery({
+    queryKey: ['dashboard-today'],
+    queryFn: () => tasksApi.dashboard(todayStart.toISOString(), todayEnd.toISOString()),
+  });
+
   if (isLoading) return <LoadingScreen />;
   if (isError) return <ErrorView onRetry={refetch} />;
 
-  const stats = data?.data ?? emptyStats();
-  const initials =
-    user?.full_name
-      ?.split(' ')
-      .slice(0, 2)
-      .map((w) => w[0])
-      .join('')
-      .toUpperCase() ?? 'U';
+  const stats = data?.data?.summary ?? emptyStats();
+  const todayStats = todayData?.data?.summary ?? emptyStats();
+  const total = stats.todo + stats.in_progress + stats.done + stats.cancelled + stats.rejected + stats.overdue;
+  const unreadCount = unreadData?.data?.unread_count ?? 0;
+
+  const currentTenant = user?.tenants?.find((t) => t.id === user.tenant_id) ?? user?.tenants?.[0];
+  const tenantName = currentTenant?.name ?? 'My Workspace';
+
+  const roleLabel =
+    user?.role === 'business_owner' ? 'Business Owner'
+    : user?.role === 'operator' ? 'Operator'
+    : user?.full_name ?? 'User';
+
+  const statValues: Record<'total' | 'in_progress' | 'done' | 'overdue', number> = {
+    total,
+    in_progress: stats.in_progress,
+    done: stats.done,
+    overdue: stats.overdue,
+  };
+
+  const statusNavMap: Partial<Record<'total' | 'in_progress' | 'done' | 'overdue', TaskStatus>> = {
+    in_progress: 'in_progress',
+    done: 'done',
+  };
+
+  const recentTasks = recentTasksData?.data ?? [];
 
   return (
-    <View collapsable={false} style={{ flex: 1 }}>
-    <ScrollView
-      className="flex-1 bg-surface"
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-    >
-      {/* Glass Header */}
-      <View className="glass-effect px-5 pt-14 pb-4 flex-row items-center justify-between">
+    <View collapsable={false} style={{ flex: 1, backgroundColor: '#f8f9ff' }}>
+      <AppHeader tenantName={tenantName} unreadCount={unreadCount} />
+
+      <ScrollView
+        className="flex-1"
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+      >
+        {/* Greeting */}
+        <View className="px-5 pt-5 pb-2">
+          <Text className="text-sm text-on-surface-variant">{getGreeting()},</Text>
+          <Text className="text-2xl font-extrabold text-on-surface">{roleLabel}</Text>
+        </View>
+
+        {/* Stat Cards — horizontal scroll */}
+        <RNScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 12, gap: 12 }}
+        >
+          {STAT_CARDS.map(({ key, label, color, bgColor, trend }) => (
+            <Pressable
+              key={key}
+              onPress={() => {
+                const status = statusNavMap[key];
+                if (status) router.push({ pathname: '/(bo)/tasks', params: { status } });
+                else if (key === 'overdue') router.push('/(bo)/rejected-overdue');
+                else router.push('/(bo)/tasks/');
+              }}
+              style={{ backgroundColor: bgColor, borderRadius: 16, padding: 16, width: 140, minHeight: 100 }}
+            >
+              <Text style={{ fontSize: 10, fontWeight: '700', color, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {label}
+              </Text>
+              <Text style={{ fontSize: 36, fontWeight: '900', color: '#0d1c2e', marginTop: 8 }}>
+                {statValues[key]}
+              </Text>
+              {trend ? (
+                <Text style={{ fontSize: 11, fontWeight: '600', color, marginTop: 4 }}>{trend}</Text>
+              ) : null}
+            </Pressable>
+          ))}
+        </RNScrollView>
+
+        <View className="px-5 gap-4 pb-24">
+          {/* Today Task */}
+          <View className="bg-surface-container-lowest rounded-2xl p-4">
+            <Text className="text-base font-bold text-on-surface mb-4">Today Task</Text>
+            {(() => {
+              const todayTotal = todayStats.todo + todayStats.in_progress + todayStats.done + todayStats.overdue;
+              const pct = (n: number) => todayTotal > 0 ? Math.round((n / todayTotal) * 100) : 0;
+              const rows = [
+                { label: 'Active',      value: todayStats.todo,        color: '#1E40AF' },
+                { label: 'Progressing', value: todayStats.in_progress, color: '#f59e0b' },
+                { label: 'Completed',   value: todayStats.done,        color: '#10b981' },
+                { label: 'Overdue',     value: todayStats.overdue,     color: '#ef4444' },
+              ] as const;
+              return (
+                <View className="flex-row items-center gap-5">
+                  <PieChart slices={[...rows]} size={140} />
+                  <View className="gap-2.5 flex-1">
+                    {rows.map(({ label, value, color }) => (
+                      <View key={label} className="flex-row items-center justify-between">
+                        <View className="flex-row items-center gap-2">
+                          <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                          <Text className="text-sm text-on-surface-variant">{label}</Text>
+                        </View>
+                        <View className="flex-row items-center gap-2">
+                          <Text className="text-xs text-on-surface-variant">{value}</Text>
+                          <Text className="text-sm font-bold" style={{ color }}>{pct(value)}%</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              );
+            })()}
+          </View>
+
+          {/* Critical Activities */}
+          <View className="bg-surface-container-lowest rounded-2xl p-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-base font-bold text-on-surface">Critical Activities</Text>
+              <Pressable onPress={() => router.push('/(bo)/tasks/')} className="active:opacity-60">
+                <Text className="text-xs font-bold text-primary uppercase tracking-wide">View All</Text>
+              </Pressable>
+            </View>
+            {recentTasks.length === 0 ? (
+              <Text className="text-sm text-on-surface-variant">No recent activities</Text>
+            ) : (
+              recentTasks.map((task: any) => {
+                const priorityIcon =
+                  task.priority === 'urgent' ? '🔴' :
+                  task.priority === 'high' ? '🟠' :
+                  task.priority === 'medium' ? '🟡' : '🟢';
+                const timeAgo = (() => {
+                  const diff = Date.now() - new Date(task.created_at).getTime();
+                  const h = Math.floor(diff / 3600000);
+                  if (h < 24) return `${h}h ago`;
+                  return `${Math.floor(h / 24)}d ago`;
+                })();
+                return (
+                  <Pressable
+                    key={task.id}
+                    onPress={() => router.push({ pathname: '/(bo)/tasks/[id]', params: { id: task.id } })}
+                    className="flex-row items-center gap-3 py-2.5 border-b border-surface-container active:opacity-70"
+                  >
+                    <View
+                      className="w-8 h-8 rounded-xl items-center justify-center"
+                      style={{ backgroundColor: '#eff6ff' }}
+                    >
+                      <Text style={{ fontSize: 14 }}>{priorityIcon}</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-semibold text-on-surface" numberOfLines={1}>
+                        {task.title}
+                      </Text>
+                      <Text className="text-xs text-on-surface-variant" numberOfLines={1}>
+                        {task.status.replace('_', ' ')} · {task.priority ?? 'normal'} priority
+                      </Text>
+                    </View>
+                    <Text className="text-xs text-on-surface-variant">{timeAgo}</Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Sticky Quick Create Task */}
+      <View
+        className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-2"
+        style={{ backgroundColor: 'rgba(248,249,255,0.95)' }}
+      >
         <Pressable
-          onPress={() => router.push('/profile')}
-          className="w-10 h-10 rounded-xl items-center justify-center active:opacity-75"
+          onPress={() => router.push('/(bo)/tasks/create')}
+          className="h-14 rounded-2xl flex-row items-center justify-center gap-2 active:opacity-80"
           style={{ backgroundColor: '#1E40AF' }}
         >
-          <Text className="text-white font-bold text-sm">{initials}</Text>
-        </Pressable>
-        <View className="flex-1 mx-3">
-          <Text className="text-[10px] font-bold uppercase tracking-widest text-primary" style={{ opacity: 0.7 }}>
-            Welcome Back
-          </Text>
-          <Text className="text-lg font-extrabold text-on-surface tracking-tight">
-            {user?.full_name ?? 'Business Owner'}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => router.push('/notifications')}
-          className="w-10 h-10 items-center justify-center rounded-xl active:opacity-60"
-        >
-          <Text className="text-on-surface text-xl">🔔</Text>
+          <Text className="text-on-primary text-xl font-bold">+</Text>
+          <Text className="text-on-primary font-bold text-base">Quick Create Task</Text>
         </Pressable>
       </View>
-
-      <View className="px-5 pt-8 gap-8 pb-10">
-        {/* Stats Section */}
-        <View>
-          <View className="flex-row items-end justify-between mb-5">
-            <View>
-              <Text className="text-2xl font-extrabold text-on-surface tracking-tight">Task Overview</Text>
-              <Text className="text-sm text-on-surface-variant mt-0.5">System activity summary</Text>
-            </View>
-            <View className="px-3 py-1 rounded-full bg-surface-container-high">
-              <Text className="text-xs font-bold text-primary uppercase tracking-widest">Today</Text>
-            </View>
-          </View>
-
-          <View className="flex-row flex-wrap gap-4">
-            {STAT_CARDS.map(({ key, label, pillColor, status }) => (
-              <Pressable
-                key={key}
-                onPress={() => status ? router.push({ pathname: '/(bo)/tasks', params: { status } }) : undefined}
-                className="bg-surface-container-lowest rounded-xl p-5 active:opacity-75 overflow-hidden"
-                style={{ width: '47%', minHeight: 120 }}
-              >
-                {/* Left color pill */}
-                <View
-                  className="absolute left-0 top-0 bottom-0"
-                  style={{ width: 4, backgroundColor: pillColor }}
-                />
-                <View className="flex-1 justify-between">
-                  <Text className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3">
-                    {label}
-                  </Text>
-                  <Text className="text-4xl font-extrabold text-on-surface">
-                    {stats[key]}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <View>
-          <Text className="text-lg font-bold text-on-surface mb-4">Quick Actions</Text>
-          <View className="flex-row flex-wrap gap-3">
-            {QUICK_ACTIONS.map(({ label, icon, onPress, primary }) => (
-              <Pressable
-                key={label}
-                onPress={onPress}
-                className="items-center gap-2 active:opacity-80"
-                style={{ width: '18%' }}
-              >
-                <View
-                  className={`w-14 h-14 rounded-2xl items-center justify-center ${primary ? 'kinetic-gradient' : 'bg-surface-container-high'}`}
-                >
-                  <Text className={`text-xl ${primary ? 'text-on-primary' : 'text-primary'}`}>{icon}</Text>
-                </View>
-                <Text className="text-[10px] font-bold uppercase tracking-tight text-on-surface text-center">
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      </View>
-    </ScrollView>
     </View>
   );
 }
