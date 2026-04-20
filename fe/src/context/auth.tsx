@@ -65,6 +65,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.log('[Auth] handleSupabaseSession error:', err);
         processedSessionRef.current = null;
+        await tokenStore.remove();
+        await tokenStore.removeRefresh();
+        await tenantStore.remove();
+        await supabase.auth.signOut();
         setState({ token: null, user: null, isLoading: false, pendingSelection: null, needsOnboarding: false });
       }
     });

@@ -39,6 +39,7 @@ function RootStack() {
       <Stack.Protected guard={isAuthenticated}>
         <Stack.Screen name="notifications" />
         <Stack.Screen name="profile" />
+        <Stack.Screen name="chat" />
       </Stack.Protected>
     </Stack>
   );
