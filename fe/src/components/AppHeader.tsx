@@ -30,22 +30,31 @@ export function AppHeader({ tenantName, unreadCount = 0 }: AppHeaderProps) {
         <Text className="text-base font-bold text-on-surface">{tenantName}</Text>
       </Pressable>
 
-      <Pressable
-        onPress={() => router.push('/notifications')}
-        className="w-10 h-10 items-center justify-center active:opacity-60"
-      >
-        <Text className="text-xl">🔔</Text>
-        {unreadCount > 0 && (
-          <View
-            className="absolute top-1 right-1 w-4 h-4 rounded-full items-center justify-center"
-            style={{ backgroundColor: '#ba1a1a' }}
-          >
-            <Text className="text-white font-bold" style={{ fontSize: 9 }}>
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </Text>
-          </View>
-        )}
-      </Pressable>
+      <View className="flex-row items-center gap-1">
+        <Pressable
+          onPress={() => router.push('/chat')}
+          className="w-10 h-10 items-center justify-center active:opacity-60"
+        >
+          <Text className="text-xl">💬</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => router.push('/notifications')}
+          className="w-10 h-10 items-center justify-center active:opacity-60"
+        >
+          <Text className="text-xl">🔔</Text>
+          {unreadCount > 0 && (
+            <View
+              className="absolute top-1 right-1 w-4 h-4 rounded-full items-center justify-center"
+              style={{ backgroundColor: '#ba1a1a' }}
+            >
+              <Text className="text-white font-bold" style={{ fontSize: 9 }}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 }
