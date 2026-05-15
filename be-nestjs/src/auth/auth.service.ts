@@ -102,13 +102,7 @@ export class AuthService {
       ?? googleUser.user_metadata?.name
       ?? googleUser.email!;
 
-    const { data: existingUser } = await this.supabase.db
-      .from('users')
-      .select('id, role')
-      .eq('id', googleUser.id)
-      .single();
-
-    await this.supabase.db
+    const { error: upsertError } = await this.supabase.db
       .from('users')
       .upsert(
         {
@@ -121,6 +115,8 @@ export class AuthService {
         },
         { onConflict: 'id' },
       );
+
+    if (upsertError) throw new BadRequestException(upsertError.message);
 
     return {
       access_token: accessToken,

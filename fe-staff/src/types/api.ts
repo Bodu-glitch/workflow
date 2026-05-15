@@ -178,6 +178,25 @@ export interface GoogleOnboardingResponse {
   tenant: TenantInfo;
 }
 
+// ─── Workspace Applications ───────────────────────────────────────────────────
+
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface WorkspaceApplication {
+  id: string;
+  status: ApplicationStatus;
+  message?: string;
+  applied_at: string;
+  reviewed_at?: string;
+  tenants: TenantInfo;
+}
+
+export interface WorkspaceSearchResult {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 // ─── In-app invitations (received by the logged-in user) ─────────────────────
 
 export interface InAppInvitation {

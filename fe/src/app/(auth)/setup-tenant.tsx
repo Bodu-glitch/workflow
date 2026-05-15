@@ -1,19 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { View, Text, TextInput, Pressable, ScrollView } from '@/tw';
 import { useAuth } from '@/context/auth';
 import { authApi } from '@/lib/api/auth';
 import { tenantStore } from '@/lib/api/client';
-import { router } from 'expo-router';
-import type { UserProfile, TenantOption } from '@/types/api';
 
 export default function SetupTenantScreen() {
-  const { token, selectTenant, logout } = useAuth();
+  const { token, selectTenant, logout, needsOnboarding } = useAuth();
   const router = useRouter();
   const [tenantName, setTenantName] = useState('');
   const [tenantSlug, setTenantSlug] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Navigate only after auth state has been committed (avoids race with _layout guards)
+  useEffect(() => {
+    if (!needsOnboarding && token) {
+      router.replace('/');
+    }
+  }, [needsOnboarding, token]);
 
   async function handleSubmit() {
     if (!tenantName.trim()) {
@@ -33,9 +38,8 @@ export default function SetupTenantScreen() {
         tenantSlug.trim() || undefined,
       );
       await tenantStore.set(data.tenant.id);
-      // selectTenant re-fetches profile and clears needsOnboarding via setState
+      // selectTenant re-fetches profile and clears needsOnboarding → useEffect above handles navigation
       await selectTenant('', data.tenant.id);
-      router.replace('/');
     } catch (e: any) {
       const code = e?.code ?? e?.error?.code;
       const message =

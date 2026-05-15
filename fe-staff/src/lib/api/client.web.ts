@@ -70,6 +70,7 @@ async function doFetch<T>(path: string, options: RequestInit, token: string | nu
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers,
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!response.ok) {
@@ -82,6 +83,28 @@ async function doFetch<T>(path: string, options: RequestInit, token: string | nu
   return response.json() as Promise<T>;
 }
 
+// Mutex: only one refresh attempt in flight at a time. Concurrent 401s share the same promise.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    if (!refreshToken) return null;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+      if (!error && data.session) {
+        localStorage.setItem(TOKEN_KEY, data.session.access_token);
+        localStorage.setItem(REFRESH_TOKEN_KEY, data.session.refresh_token);
+        return data.session.access_token;
+      }
+    } catch {}
+    return null;
+  })().finally(() => { refreshPromise = null; });
+  return refreshPromise;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -92,19 +115,9 @@ export async function apiFetch<T>(
     return await doFetch<T>(path, options, token);
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
-      const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-      if (refreshToken) {
-        try {
-          const { supabase } = await import('@/lib/supabase');
-          const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
-          if (!error && data.session) {
-            localStorage.setItem(TOKEN_KEY, data.session.access_token);
-            localStorage.setItem(REFRESH_TOKEN_KEY, data.session.refresh_token);
-            return await doFetch<T>(path, options, data.session.access_token);
-          }
-        } catch {
-          // refresh failed — fall through to throw original error
-        }
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        return await doFetch<T>(path, options, newToken);
       }
     }
     throw err;

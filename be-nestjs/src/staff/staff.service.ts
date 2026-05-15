@@ -12,6 +12,7 @@ import { EmailService } from '../email/email.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { InviteStaffDto } from './dto/invite-staff.dto.js';
 import { AcceptInvitationGoogleDto } from './dto/accept-invitation-google.dto.js';
+import { ApplyToWorkspaceDto } from './dto/apply-to-workspace.dto.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 
 @Injectable()
@@ -208,6 +209,7 @@ export class StaffService {
       )
       .eq('tenant_id', tenantId)
       .in('role', ['staff', 'operator'])
+      .eq('is_active', true)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -426,5 +428,197 @@ export class StaffService {
       .eq('id', invitationId);
 
     return { message: 'Invitation declined' };
+  }
+
+  async searchWorkspaces(query: string) {
+    const q = (query ?? '').trim();
+
+    let builder = this.supabase.db
+      .from('tenants')
+      .select('id, name, slug')
+      .eq('status', 'active')
+      .order('name')
+      .limit(50);
+
+    if (q.length >= 2) {
+      builder = builder.or(`slug.ilike.%${q}%,name.ilike.%${q}%`);
+    }
+
+    const { data } = await builder;
+    return data ?? [];
+  }
+
+  async applyToWorkspace(currentUser: { id: string }, dto: ApplyToWorkspaceDto) {
+    const { data: tenant } = await this.supabase.db
+      .from('tenants')
+      .select('id, name, slug')
+      .eq('id', dto.tenant_id)
+      .eq('status', 'active')
+      .single();
+
+    if (!tenant) {
+      throw new NotFoundException({ code: 'TENANT_NOT_FOUND', message: 'Workspace not found' });
+    }
+
+    const { data: existingMembership } = await this.supabase.db
+      .from('user_tenants')
+      .select('id')
+      .eq('user_id', currentUser.id)
+      .eq('tenant_id', dto.tenant_id)
+      .eq('is_active', true)
+      .single();
+
+    if (existingMembership) {
+      throw new ConflictException({ code: 'ALREADY_MEMBER', message: 'You are already a member of this workspace' });
+    }
+
+    const { data, error } = await this.supabase.db
+      .from('workspace_applications')
+      .upsert(
+        {
+          applicant_id: currentUser.id,
+          tenant_id: dto.tenant_id,
+          message: dto.message ?? null,
+          status: 'pending',
+          applied_at: new Date().toISOString(),
+          reviewed_by: null,
+          reviewed_at: null,
+        },
+        { onConflict: 'applicant_id,tenant_id' },
+      )
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    return { message: 'Application submitted', application: { id: data.id, status: data.status, tenant } };
+  }
+
+  async myApplications(currentUser: { id: string }) {
+    const { data, error } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id, status, message, applied_at, reviewed_at, tenants(id, name, slug)')
+      .eq('applicant_id', currentUser.id)
+      .order('applied_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async withdrawApplication(applicationId: string, currentUser: { id: string }) {
+    const { data: app } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id')
+      .eq('id', applicationId)
+      .eq('applicant_id', currentUser.id)
+      .eq('status', 'pending')
+      .single();
+
+    if (!app) {
+      throw new NotFoundException({ code: 'APPLICATION_NOT_FOUND', message: 'Application not found' });
+    }
+
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'withdrawn' })
+      .eq('id', applicationId);
+
+    return { message: 'Application withdrawn' };
+  }
+
+  async listApplications(tenantId: string, pagination: PaginationDto) {
+    const { page = 1, limit = 20 } = pagination;
+    const offset = (page - 1) * limit;
+
+    const { data, count, error } = await this.supabase.db
+      .from('workspace_applications')
+      .select(
+        'id, status, message, applied_at, reviewed_at, users!applicant_id(id, email, full_name, avatar_url)',
+        { count: 'exact' },
+      )
+      .eq('tenant_id', tenantId)
+      .order('applied_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw new BadRequestException(error.message);
+
+    const normalized = (data ?? []).map((row: any) => ({
+      id: row.id,
+      status: row.status,
+      message: row.message,
+      applied_at: row.applied_at,
+      reviewed_at: row.reviewed_at,
+      applicant: row.users,
+    }));
+
+    return { data: normalized, meta: { total: count, page, limit } };
+  }
+
+  async approveApplication(applicationId: string, tenantId: string, reviewerId: string) {
+    const { data: app } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id, applicant_id')
+      .eq('id', applicationId)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending')
+      .single();
+
+    if (!app) {
+      throw new NotFoundException({ code: 'APPLICATION_NOT_FOUND', message: 'Application not found' });
+    }
+
+    const { error: memberError } = await this.supabase.db.from('user_tenants').upsert({
+      user_id: app.applicant_id,
+      tenant_id: tenantId,
+      role: 'staff',
+      is_active: true,
+    }, { onConflict: 'user_id,tenant_id' });
+
+    if (memberError) {
+      throw new BadRequestException(memberError.message);
+    }
+
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'approved', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
+      .eq('id', applicationId);
+
+    await this.supabase.db.from('audit_logs').insert({
+      tenant_id: tenantId,
+      user_id: reviewerId,
+      action: 'member_invited',
+      metadata: { applicant_id: app.applicant_id, source: 'application' },
+    });
+
+    void this.notifications.sendPushNotification({
+      user_ids: [app.applicant_id],
+      type: 'invitation_received',
+      title: 'Đơn ứng tuyển được chấp nhận',
+      body: 'Đơn ứng tuyển của bạn đã được chấp nhận. Bạn có thể vào workspace ngay bây giờ.',
+      tenant_id: tenantId,
+    });
+
+    return { message: 'Application approved' };
+  }
+
+  async rejectApplication(applicationId: string, tenantId: string, reviewerId: string) {
+    const { data: app } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id, applicant_id')
+      .eq('id', applicationId)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending')
+      .single();
+
+    if (!app) {
+      throw new NotFoundException({ code: 'APPLICATION_NOT_FOUND', message: 'Application not found' });
+    }
+
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'rejected', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
+      .eq('id', applicationId);
+
+    return { message: 'Application rejected' };
   }
 }

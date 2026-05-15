@@ -10,29 +10,39 @@ export default function Index() {
   const [hasPendingInvites, setHasPendingInvites] = useState(false);
   const checkedTokenRef = useRef<string | null>(null);
 
+  const noTenantYet = !!(token && pendingSelection && pendingSelection.tenants.length === 0);
+  const shouldCheckInvites = !!(token && (user || pendingSelection));
+
   useEffect(() => {
-    if (!token || !user) return;
+    if (!shouldCheckInvites) return;
     if (checkedTokenRef.current === token) return;
     checkedTokenRef.current = token;
     setInviteCheckDone(false);
     staffApi.myInvitations()
       .then(res => {
-        const pending = res.data.data.filter(i => i.status === 'pending');
+        const pending = res.data.filter(i => i.status === 'pending');
         setHasPendingInvites(pending.length > 0);
       })
       .catch(() => { setHasPendingInvites(false); })
       .finally(() => setInviteCheckDone(true));
-  }, [token, user]);
+  }, [token, user, shouldCheckInvites]);
 
   if (isLoading) return <LoadingScreen />;
-  if (needsOnboarding) return <Redirect href="/(auth)/setup-tenant" />;
+  if (needsOnboarding) return <Redirect href="/(auth)/login" />;
+  if (!token) return <Redirect href="/(auth)/login" />;
+
+  // User has no tenant memberships — check invitations first before showing workspace search
+  if (noTenantYet) {
+    if (!inviteCheckDone) return <LoadingScreen />;
+    if (hasPendingInvites) return <Redirect href="/(auth)/invitations" />;
+    return <Redirect href="/(auth)/select-tenant" />;
+  }
+
   if (pendingSelection) return <Redirect href="/(auth)/select-tenant" />;
-  if (!token || !user) return <Redirect href="/(auth)/login" />;
+  if (!user) return <Redirect href="/(auth)/login" />;
   if (!inviteCheckDone) return <LoadingScreen />;
   if (hasPendingInvites) return <Redirect href="/(auth)/invitations" />;
 
-  if (user.role === 'staff') return <Redirect href="/(staff)" />;
-  // Non-staff role or role is null — not allowed in this app
-  if ((user as any).tenants?.length > 0) return <Redirect href="/(auth)/select-tenant" />;
+  if (['staff', 'business_owner', 'operator'].includes(user.role ?? '')) return <Redirect href="/(staff)" />;
   return <Redirect href="/(auth)/login" />;
 }

@@ -3,51 +3,53 @@ import { FlatList, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { View, Text, Pressable } from '@/tw';
-import { technicianApi } from '@/lib/api/technician';
+import { meApi } from '@/lib/api/me';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
-import type { ServiceRequestSummary } from '@/lib/api/requests';
+import type { Task } from '@/types/api';
 
 const STATUS_LABELS: Record<string, string> = {
-  completed: 'Hoàn thành',
-  completed_late: 'Hoàn thành (trễ)',
+  done: 'Hoàn thành',
   cancelled: 'Đã hủy',
+  rejected: 'Từ chối',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  completed: '#10B981',
-  completed_late: '#F59E0B',
+  done: '#10B981',
   cancelled: '#9CA3AF',
+  rejected: '#EF4444',
 };
 
 export default function WorkHistoryScreen() {
   const [page, setPage] = useState(1);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: ['technician-history', page],
-    queryFn: () => technicianApi.getHistory({ page, limit: 20 }),
+    queryKey: ['me-history', page],
+    queryFn: () => meApi.history(page, 20),
   });
 
-  const jobs: ServiceRequestSummary[] = data?.data ?? [];
+  const tasks: Task[] = data?.data ?? [];
   const meta = data?.meta;
 
   if (isLoading) return <LoadingScreen />;
   if (isError) return <ErrorView onRetry={refetch} />;
 
-  function renderJob({ item: job }: { item: ServiceRequestSummary }) {
-    const statusColor = STATUS_COLORS[job.status] ?? '#9CA3AF';
-    const statusLabel = STATUS_LABELS[job.status] ?? job.status;
+  function renderTask({ item: task }: { item: Task }) {
+    const statusColor = STATUS_COLORS[task.status] ?? '#9CA3AF';
+    const statusLabel = STATUS_LABELS[task.status] ?? task.status;
 
     return (
       <Pressable
-        onPress={() => router.push({ pathname: '/(staff)/jobs/[id]', params: { id: job.id } })}
+        onPress={() => router.push({ pathname: '/(staff)/tasks/[id]', params: { id: task.id } })}
         className="bg-surface-container-lowest rounded-xl p-5 mb-3 mx-4 overflow-hidden active:opacity-70"
       >
         <View className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: statusColor }} />
         <View className="flex-row items-start justify-between mb-2">
           <View className="flex-1 mr-3 gap-0.5">
-            <Text className="text-xs font-bold" style={{ color: statusColor }}>{job.category?.name ?? 'Dịch vụ'}</Text>
-            <Text className="text-sm font-semibold text-on-surface" numberOfLines={2}>{job.description}</Text>
+            <Text className="text-sm font-semibold text-on-surface" numberOfLines={2}>{task.title}</Text>
+            {task.description && (
+              <Text className="text-xs text-on-surface-variant" numberOfLines={1}>{task.description}</Text>
+            )}
           </View>
           <View style={{ backgroundColor: statusColor + '20', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
             <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>{statusLabel}</Text>
@@ -55,19 +57,13 @@ export default function WorkHistoryScreen() {
         </View>
 
         <View className="gap-1 mt-1">
-          {job.customer && (
-            <Text className="text-xs text-on-surface-variant">👤 {job.customer.full_name}</Text>
+          {task.location_name && (
+            <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {task.location_name}</Text>
           )}
-          {job.completed_at && (
+          {task.deadline && (
             <Text className="text-xs text-on-surface-variant">
-              ✅ {new Date(job.completed_at).toLocaleString('vi-VN')}
+              ⏰ {new Date(task.deadline).toLocaleString('vi-VN')}
             </Text>
-          )}
-          {job.collected_amount != null && (
-            <View className="flex-row items-center justify-between mt-1 pt-2 border-t border-outline/20">
-              <Text className="text-xs text-on-surface-variant">Đã thu</Text>
-              <Text className="text-sm font-bold text-success">💰 {job.collected_amount.toLocaleString('vi-VN')}₫</Text>
-            </View>
           )}
         </View>
       </Pressable>
@@ -81,9 +77,9 @@ export default function WorkHistoryScreen() {
       </View>
 
       <FlatList
-        data={jobs}
+        data={tasks}
         keyExtractor={(item) => item.id}
-        renderItem={renderJob}
+        renderItem={renderTask}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={() => { setPage(1); refetch(); }} />

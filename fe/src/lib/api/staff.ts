@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { StaffMember, Invitation, InAppInvitation, PaginatedResponse } from '@/types/api';
+import type { StaffMember, Invitation, InAppInvitation, PaginatedResponse, WorkspaceApplication } from '@/types/api';
 
 export const staffApi = {
   list: (page = 1, limit = 20) =>
@@ -40,6 +40,19 @@ export const staffApi = {
 
   declineInvitation: (id: string) =>
     apiFetch<{ data: { message: string } }>(`/staff/invitations/${id}/decline`, {
+      method: 'PATCH',
+    }),
+
+  applications: (page = 1, limit = 20) =>
+    apiFetch<PaginatedResponse<WorkspaceApplication>>(`/staff/applications?page=${page}&limit=${limit}`),
+
+  approveApplication: (id: string) =>
+    apiFetch<{ data: { message: string } }>(`/staff/applications/${id}/approve`, {
+      method: 'PATCH',
+    }),
+
+  rejectApplication: (id: string) =>
+    apiFetch<{ data: { message: string } }>(`/staff/applications/${id}/reject`, {
       method: 'PATCH',
     }),
 };

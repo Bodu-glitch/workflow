@@ -27,7 +27,7 @@ function RootStack() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
-      <Stack.Protected guard={isAuthenticated && user?.role === 'staff'}>
+      <Stack.Protected guard={isAuthenticated && ['staff', 'business_owner', 'operator'].includes(user?.role ?? '')}>
         <Stack.Screen name="(staff)" />
       </Stack.Protected>
       <Stack.Protected guard={isAuthenticated}>

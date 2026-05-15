@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Ht
 import { StaffService } from './staff.service.js';
 import { InviteStaffDto } from './dto/invite-staff.dto.js';
 import { AcceptInvitationGoogleDto } from './dto/accept-invitation-google.dto.js';
+import { ApplyToWorkspaceDto } from './dto/apply-to-workspace.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
@@ -87,6 +88,69 @@ export class StaffController {
   @Patch('accept-invitation/:token')
   acceptInvitationByToken(@Param('token') token: string) {
     return this.staffService.acceptInvitationByToken(token);
+  }
+
+  // ── Workspace Applications (all fixed-path routes must be before :id) ──────
+
+  @UseGuards(JwtAuthGuard)
+  @Get('search-workspaces')
+  searchWorkspaces(@Query('q') q: string) {
+    return this.staffService.searchWorkspaces(q ?? '');
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('apply')
+  applyToWorkspace(
+    @Body() dto: ApplyToWorkspaceDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.staffService.applyToWorkspace(user, dto);
+  }
+
+  /** Must be before :id routes */
+  @UseGuards(JwtAuthGuard)
+  @Get('my-applications')
+  myApplications(@CurrentUser() user: { id: string }) {
+    return this.staffService.myApplications(user);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('business_owner', 'operator', 'superadmin')
+  @Get('applications')
+  listApplications(
+    @CurrentUser() user: { tenant_id: string },
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.staffService.listApplications(user.tenant_id, pagination);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('business_owner', 'operator', 'superadmin')
+  @Patch('applications/:id/approve')
+  approveApplication(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; tenant_id: string },
+  ) {
+    return this.staffService.approveApplication(id, user.tenant_id, user.id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('business_owner', 'operator', 'superadmin')
+  @Patch('applications/:id/reject')
+  rejectApplication(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; tenant_id: string },
+  ) {
+    return this.staffService.rejectApplication(id, user.tenant_id, user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('applications/:id/withdraw')
+  withdrawApplication(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.staffService.withdrawApplication(id, user);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

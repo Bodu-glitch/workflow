@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm start *)",
       "Bash(npx expo *)",
       "Bash(npm install *)"
     ]
@@ -9,8 +8,5 @@
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "supabase"
-  ],
-  "enabledPlugins": {
-    "expo@expo-plugins": false
-  }
+  ]
 }

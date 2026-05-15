@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { StaffMember, Invitation, InAppInvitation, PaginatedResponse } from '@/types/api';
+import type { StaffMember, Invitation, InAppInvitation, PaginatedResponse, WorkspaceApplication, WorkspaceSearchResult } from '@/types/api';
 
 export const staffApi = {
   list: (page = 1, limit = 20) =>
@@ -31,7 +31,7 @@ export const staffApi = {
     }),
 
   myInvitations: () =>
-    apiFetch<{ data: { data: InAppInvitation[] } }>('/staff/my-invitations'),
+    apiFetch<{ data: InAppInvitation[] }>('/staff/my-invitations'),
 
   acceptInvitation: (id: string) =>
     apiFetch<{ data: { message: string } }>(`/staff/invitations/${id}/accept`, {
@@ -40,6 +40,23 @@ export const staffApi = {
 
   declineInvitation: (id: string) =>
     apiFetch<{ data: { message: string } }>(`/staff/invitations/${id}/decline`, {
+      method: 'PATCH',
+    }),
+
+  searchWorkspaces: (q: string) =>
+    apiFetch<{ data: WorkspaceSearchResult[] }>(`/staff/search-workspaces?q=${encodeURIComponent(q)}`),
+
+  apply: (tenantId: string, message?: string) =>
+    apiFetch<{ data: { message: string; application: { id: string; status: string; tenant: WorkspaceSearchResult } } }>('/staff/apply', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenantId, message }),
+    }),
+
+  myApplications: () =>
+    apiFetch<{ data: WorkspaceApplication[] }>('/staff/my-applications'),
+
+  withdrawApplication: (id: string) =>
+    apiFetch<{ data: { message: string } }>(`/staff/applications/${id}/withdraw`, {
       method: 'PATCH',
     }),
 };

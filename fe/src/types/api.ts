@@ -105,6 +105,26 @@ export interface Invitation {
   created_at: string;
 }
 
+// ─── Workspace Applications ───────────────────────────────────────────────────
+
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface WorkspaceApplicant {
+  id: string;
+  email: string;
+  full_name: string;
+  avatar_url?: string;
+}
+
+export interface WorkspaceApplication {
+  id: string;
+  status: ApplicationStatus;
+  message?: string;
+  applied_at: string;
+  reviewed_at?: string;
+  applicant: WorkspaceApplicant;
+}
+
 // ─── Audit ───────────────────────────────────────────────────────────────────
 
 export type AuditAction =

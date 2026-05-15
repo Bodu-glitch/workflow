@@ -7,8 +7,9 @@ import { staffApi } from '@/lib/api/staff';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 import { ApiError } from '@/lib/api/client';
+import type { WorkspaceApplication } from '@/types/api';
 
-type Tab = 'staff' | 'invitations';
+type Tab = 'staff' | 'invitations' | 'applications';
 
 export default function BOEmployeeManagementScreen() {
   const qc = useQueryClient();
@@ -51,13 +52,39 @@ export default function BOEmployeeManagementScreen() {
   const removeMutation = useMutation({
     mutationFn: (id: string) => staffApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }),
-    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to remove'),
+    onError: (e) => {
+      const msg = e instanceof ApiError ? e.message : 'Không thể xóa nhân viên';
+      if (typeof window !== 'undefined') window.alert(msg);
+      else Alert.alert('Lỗi', msg);
+    },
   });
 
   const resendMutation = useMutation({
     mutationFn: (id: string) => staffApi.resendInvite(id),
     onSuccess: () => Alert.alert('Success', 'Invitation resent'),
     onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to resend'),
+  });
+
+  const applicationsQuery = useQuery({
+    queryKey: ['staff-applications'],
+    queryFn: () => staffApi.applications(),
+    select: (d) => d.data,
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => staffApi.approveApplication(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['staff-applications'] });
+      qc.invalidateQueries({ queryKey: ['staff'] });
+      Alert.alert('Đã duyệt', 'Ứng viên đã được thêm vào team');
+    },
+    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Không thể duyệt'),
+  });
+
+  const rejectAppMutation = useMutation({
+    mutationFn: (id: string) => staffApi.rejectApplication(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['staff-applications'] }),
+    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Không thể từ chối'),
   });
 
   const isLoading = staffQuery.isLoading || invitationsQuery.isLoading;
@@ -68,6 +95,7 @@ export default function BOEmployeeManagementScreen() {
 
   const staffList = staffQuery.data ?? [];
   const invitationList = invitationsQuery.data ?? [];
+  const applicationList: WorkspaceApplication[] = (applicationsQuery.data as any) ?? [];
 
   return (
     <View className="flex-1 bg-surface">
@@ -90,19 +118,25 @@ export default function BOEmployeeManagementScreen() {
 
         {/* Tabs */}
         <View className="flex-row gap-2">
-          {(['staff', 'invitations'] as Tab[]).map((t) => (
-            <Pressable
-              key={t}
-              onPress={() => setTab(t)}
-              className={`flex-1 py-2.5 rounded-xl items-center ${
-                tab === t ? 'kinetic-gradient' : 'bg-surface-container-highest'
-              }`}
-            >
-              <Text className={`text-xs font-bold ${tab === t ? 'text-on-primary' : 'text-on-surface-variant'}`}>
-                {t === 'staff' ? `STAFF (${staffList.length})` : `PENDING (${invitationList.length})`}
-              </Text>
-            </Pressable>
-          ))}
+          {(['staff', 'invitations', 'applications'] as Tab[]).map((t) => {
+            const label =
+              t === 'staff' ? `STAFF (${staffList.length})` :
+              t === 'invitations' ? `INVITE (${invitationList.length})` :
+              `ỨNG TUYỂN (${applicationList.filter(a => a.status === 'pending').length})`;
+            return (
+              <Pressable
+                key={t}
+                onPress={() => setTab(t)}
+                className={`flex-1 py-2.5 rounded-xl items-center ${
+                  tab === t ? 'kinetic-gradient' : 'bg-surface-container-highest'
+                }`}
+              >
+                <Text className={`text-xs font-bold ${tab === t ? 'text-on-primary' : 'text-on-surface-variant'}`}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -110,8 +144,8 @@ export default function BOEmployeeManagementScreen() {
         className="flex-1 px-4 pt-5"
         refreshControl={
           <RefreshControl
-            refreshing={staffQuery.isRefetching || invitationsQuery.isRefetching}
-            onRefresh={() => { staffQuery.refetch(); invitationsQuery.refetch(); }}
+            refreshing={staffQuery.isRefetching || invitationsQuery.isRefetching || applicationsQuery.isRefetching}
+            onRefresh={() => { staffQuery.refetch(); invitationsQuery.refetch(); applicationsQuery.refetch(); }}
           />
         }
       >
@@ -183,15 +217,20 @@ export default function BOEmployeeManagementScreen() {
                   </View>
                 </View>
                 <Pressable
-                  onPress={() =>
-                    Alert.alert('Remove', `Remove ${s.full_name} from the team?`, [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Remove', style: 'destructive', onPress: () => removeMutation.mutate(s.id) },
-                    ])
-                  }
+                  onPress={() => {
+                    const doRemove = () => removeMutation.mutate(s.id);
+                    if (typeof window !== 'undefined') {
+                      if (window.confirm(`Xóa ${s.full_name} khỏi team?`)) doRemove();
+                    } else {
+                      Alert.alert('Xóa nhân viên', `Xóa ${s.full_name} khỏi team?`, [
+                        { text: 'Hủy', style: 'cancel' },
+                        { text: 'Xóa', style: 'destructive', onPress: doRemove },
+                      ]);
+                    }
+                  }}
                   className="active:opacity-60 ml-2"
                 >
-                  <Text className="text-xs font-semibold text-error">Remove</Text>
+                  <Text className="text-xs font-semibold text-error">Xóa</Text>
                 </Pressable>
               </View>
             ))}
@@ -230,6 +269,76 @@ export default function BOEmployeeManagementScreen() {
                 >
                   <Text className="text-xs font-semibold text-primary">Resend</Text>
                 </Pressable>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* Applications list */}
+        {tab === 'applications' && (
+          <>
+            {applicationList.length === 0 && (
+              <View className="py-16 items-center">
+                <Text className="text-on-surface-variant text-sm">Chưa có đơn ứng tuyển nào</Text>
+              </View>
+            )}
+            {applicationList.map((app) => (
+              <View
+                key={app.id}
+                className="bg-surface-container-lowest rounded-xl px-4 py-4 mb-3"
+              >
+                <View className="flex-row items-center mb-3">
+                  <View className="w-10 h-10 rounded-full bg-surface-container-high items-center justify-center mr-3">
+                    <Text className="text-sm font-bold text-primary">
+                      {app.applicant.full_name.charAt(0)}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-semibold text-on-surface">{app.applicant.full_name}</Text>
+                    <Text className="text-xs text-on-surface-variant">{app.applicant.email}</Text>
+                  </View>
+                  <View className={`px-2 py-0.5 rounded-full ${
+                    app.status === 'pending' ? 'bg-warning-container' :
+                    app.status === 'approved' ? 'bg-success-container' : 'bg-error-container'
+                  }`}>
+                    <Text className={`text-[10px] font-bold uppercase ${
+                      app.status === 'pending' ? 'text-on-warning-container' :
+                      app.status === 'approved' ? 'text-on-success-container' : 'text-on-error-container'
+                    }`}>
+                      {app.status === 'pending' ? 'Chờ duyệt' : app.status === 'approved' ? 'Đã duyệt' : 'Từ chối'}
+                    </Text>
+                  </View>
+                </View>
+                {app.message ? (
+                  <Text className="text-xs text-on-surface-variant mb-3 italic">"{app.message}"</Text>
+                ) : null}
+                <Text className="text-xs text-on-surface-variant mb-3">
+                  {new Date(app.applied_at).toLocaleDateString('vi-VN')}
+                </Text>
+                {app.status === 'pending' && (
+                  <View className="flex-row gap-2">
+                    <Pressable
+                      onPress={() => approveMutation.mutate(app.id)}
+                      disabled={approveMutation.isPending || rejectAppMutation.isPending}
+                      className="flex-1 py-2.5 rounded-xl bg-success-container items-center active:opacity-80 disabled:opacity-50"
+                    >
+                      {approveMutation.isPending
+                        ? <ActivityIndicator size="small" color="#1a6e3c" />
+                        : <Text className="text-xs font-bold text-on-success-container">Chấp nhận</Text>
+                      }
+                    </Pressable>
+                    <Pressable
+                      onPress={() => rejectAppMutation.mutate(app.id)}
+                      disabled={approveMutation.isPending || rejectAppMutation.isPending}
+                      className="flex-1 py-2.5 rounded-xl bg-error-container items-center active:opacity-80 disabled:opacity-50"
+                    >
+                      {rejectAppMutation.isPending
+                        ? <ActivityIndicator size="small" color="#b3261e" />
+                        : <Text className="text-xs font-bold text-on-error-container">Từ chối</Text>
+                      }
+                    </Pressable>
+                  </View>
+                )}
               </View>
             ))}
           </>

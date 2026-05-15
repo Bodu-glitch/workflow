@@ -28,7 +28,7 @@ function formatExpiry(dateStr: string): string {
 }
 
 export default function InvitationsScreen() {
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, selectTenant } = useAuth();
   const router = useRouter();
   const [invitations, setInvitations] = useState<InAppInvitation[]>([]);
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -40,7 +40,7 @@ export default function InvitationsScreen() {
     setError(false);
     try {
       const res = await staffApi.myInvitations();
-      setInvitations(res.data.data.filter(i => i.status === 'pending'));
+      setInvitations(res.data.filter(i => i.status === 'pending'));
     } catch { setError(true); }
     finally { setFetching(false); }
   }, []);
@@ -60,14 +60,15 @@ export default function InvitationsScreen() {
     });
   }
 
-  async function handleAccept(id: string) {
+  async function handleAccept(id: string, tenantId: string) {
     setLoadingIds(prev => new Set(prev).add(id));
     try {
       await staffApi.acceptInvitation(id);
-      removeInvitation(id);
+      // selectTenant sets X-Tenant-ID, re-fetches profile, and clears pendingSelection
+      await selectTenant('', tenantId);
+      router.replace('/');
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Cannot accept invitation.');
-    } finally {
       setLoadingIds(prev => { const next = new Set(prev); next.delete(id); return next; });
     }
   }
@@ -146,7 +147,7 @@ export default function InvitationsScreen() {
                   <Text className="text-sm font-semibold text-on-surface-variant">Decline</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => handleAccept(inv.id)}
+                  onPress={() => handleAccept(inv.id, inv.tenant_id)}
                   disabled={isLoading}
                   className="flex-1 kinetic-gradient rounded-xl py-3 items-center active:opacity-80 disabled:opacity-40"
                 >
