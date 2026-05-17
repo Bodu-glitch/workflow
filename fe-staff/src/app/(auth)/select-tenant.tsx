@@ -47,8 +47,6 @@ export default function SelectTenantScreen() {
   const [allWorkspaces, setAllWorkspaces] = useState<WorkspaceSearchResult[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [applyingId, setApplyingId] = useState<string | null>(null);
-  const [applyMessage, setApplyMessage] = useState('');
-  const [showMessageFor, setShowMessageFor] = useState<string | null>(null);
 
   // My applications state
   const [myApplications, setMyApplications] = useState<WorkspaceApplication[]>([]);
@@ -142,10 +140,7 @@ export default function SelectTenantScreen() {
   async function handleApply(workspace: WorkspaceSearchResult) {
     setApplyingId(workspace.id);
     try {
-      await staffApi.apply(workspace.id, applyMessage.trim() || undefined);
-      setShowMessageFor(null);
-      setApplyMessage('');
-      // Refresh my applications
+      await staffApi.apply(workspace.id);
       const res = await staffApi.myApplications();
       setMyApplications(res.data as any);
       Alert.alert('Đã gửi', `Đơn ứng tuyển vào "${workspace.name}" đã được gửi. Chờ quản lý xét duyệt.`);
@@ -209,8 +204,11 @@ export default function SelectTenantScreen() {
 
   return (
     <View className="flex-1 bg-surface">
-      <View className="glass-effect px-6 pt-14 pb-4">
+      <View className="glass-effect px-6 pt-14 pb-4 flex-row items-center justify-between">
         <Text className="text-xl font-extrabold text-primary tracking-tight">Executive Kinetic</Text>
+        <Pressable onPress={() => router.push('/profile')} className="w-10 h-10 items-center justify-center rounded-xl active:opacity-60">
+          <Text className="text-on-surface text-xl">👤</Text>
+        </Pressable>
       </View>
 
       <View className="px-6 pt-8 pb-4">
@@ -349,40 +347,16 @@ export default function SelectTenantScreen() {
                       <View className="px-3 py-1.5 rounded-lg bg-warning-container">
                         <Text className="text-xs font-bold text-on-warning-container">Đã ứng tuyển</Text>
                       </View>
-                    ) : showMessageFor === ws.id ? (
-                      <View className="flex-1 gap-2">
-                        <TextInput
-                          className="h-10 px-3 bg-surface-container-high rounded-lg text-on-surface text-xs"
-                          placeholder="Lời nhắn (tùy chọn)"
-                          placeholderTextColor="#737685"
-                          value={applyMessage}
-                          onChangeText={setApplyMessage}
-                        />
-                        <View className="flex-row gap-2">
-                          <Pressable
-                            onPress={() => { setShowMessageFor(null); setApplyMessage(''); }}
-                            className="flex-1 h-9 rounded-lg bg-surface-container-high items-center justify-center"
-                          >
-                            <Text className="text-xs font-semibold text-on-surface-variant">Hủy</Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleApply(ws)}
-                            disabled={applyingId === ws.id}
-                            className="flex-1 h-9 rounded-lg bg-primary items-center justify-center active:opacity-80 disabled:opacity-50"
-                          >
-                            {applyingId === ws.id
-                              ? <ActivityIndicator size="small" color="#fff" />
-                              : <Text className="text-xs font-bold text-on-primary">Gửi</Text>
-                            }
-                          </Pressable>
-                        </View>
-                      </View>
                     ) : (
                       <Pressable
-                        onPress={() => setShowMessageFor(ws.id)}
-                        className="px-3 py-1.5 rounded-lg bg-primary active:opacity-80"
+                        onPress={() => handleApply(ws)}
+                        disabled={applyingId === ws.id}
+                        className="px-3 py-1.5 rounded-lg bg-primary active:opacity-80 disabled:opacity-50"
                       >
-                        <Text className="text-xs font-bold text-on-primary">Ứng tuyển</Text>
+                        {applyingId === ws.id
+                          ? <ActivityIndicator size="small" color="#fff" />
+                          : <Text className="text-xs font-bold text-on-primary">Ứng tuyển</Text>
+                        }
                       </Pressable>
                     )}
                   </View>

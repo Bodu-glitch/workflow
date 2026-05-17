@@ -33,7 +33,7 @@ export class StaffService {
       .single();
 
     if (existingMembership) {
-      throw new ConflictException({ code: 'EMAIL_ALREADY_EXISTS', message: 'User with this email already exists in this tenant' });
+      throw new ConflictException({ code: 'ALREADY_IN_WORKSPACE', message: 'Email này đã là thành viên trong workspace này rồi' });
     }
 
     // Cancel any pending invitations for this email in this tenant
@@ -50,6 +50,23 @@ export class StaffService {
       .select('id')
       .eq('email', dto.email)
       .single();
+
+    // Check if user is already a member of any other workspace
+    let inOtherWorkspace = false;
+    if (existingUser) {
+      const { data: otherMembership } = await this.supabase.db
+        .from('user_tenants')
+        .select('tenant_id')
+        .eq('user_id', existingUser.id)
+        .neq('tenant_id', invitedBy.tenant_id)
+        .limit(1)
+        .single();
+      inOtherWorkspace = !!otherMembership;
+    }
+
+    if (inOtherWorkspace) {
+      throw new ConflictException({ code: 'USER_IN_OTHER_WORKSPACE', message: 'Người dùng này đang là thành viên của một workspace khác và không thể được mời' });
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -91,7 +108,7 @@ export class StaffService {
 
       void this.emailService.sendInvitationAcceptEmail(dto.email, token);
 
-      return { message: 'Invitation sent via push and email', invitation_id: data.id };
+      return { message: 'Invitation sent via push and email', invitation_id: data.id, in_other_workspace: inOtherWorkspace };
     }
 
     // Email invitation (new user)
@@ -120,7 +137,7 @@ export class StaffService {
 
     await this.emailService.sendInvitationEmail(dto.email, token);
 
-    return { message: 'Invitation sent', invitation_id: data.id, token };
+    return { message: 'Invitation sent', invitation_id: data.id, token, in_other_workspace: inOtherWorkspace };
   }
 
   async acceptInvitationGoogle(dto: AcceptInvitationGoogleDto) {
@@ -161,16 +178,15 @@ export class StaffService {
         { onConflict: 'id' },
       );
 
-    // Add to tenant (ignore duplicate)
-    const { error: memberError } = await this.supabase.db.from('user_tenants').insert({
+    // Upsert to tenant — re-activates if previously removed
+    const { error: memberError } = await this.supabase.db.from('user_tenants').upsert({
       user_id: googleUser.id,
       tenant_id: invitation.tenant_id,
       role: invitation.role,
-    });
+      is_active: true,
+    }, { onConflict: 'user_id,tenant_id' });
 
-    if (memberError && !memberError.message.includes('duplicate')) {
-      throw new BadRequestException(memberError.message);
-    }
+    if (memberError) throw new BadRequestException(memberError.message);
 
     await this.supabase.db.from('invitations').update({ status: 'accepted' }).eq('id', invitation.id);
 
@@ -308,7 +324,7 @@ export class StaffService {
 
     await this.supabase.db
       .from('user_tenants')
-      .update({ is_active: false })
+      .delete()
       .eq('user_id', staffId)
       .eq('tenant_id', currentUser.tenant_id);
 
@@ -352,18 +368,17 @@ export class StaffService {
       throw new BadRequestException({ code: 'TOKEN_EXPIRED', message: 'Invitation has expired' });
     }
 
-    // Add to tenant
+    // Upsert to tenant — re-activates if previously removed
     const { error: memberError } = await this.supabase.db
       .from('user_tenants')
-      .insert({
+      .upsert({
         user_id: currentUser.id,
         tenant_id: invitation.tenant_id,
         role: invitation.role,
-      });
+        is_active: true,
+      }, { onConflict: 'user_id,tenant_id' });
 
-    if (memberError && !memberError.message.includes('duplicate')) {
-      throw new BadRequestException(memberError.message);
-    }
+    if (memberError) throw new BadRequestException(memberError.message);
 
     await this.supabase.db
       .from('invitations')

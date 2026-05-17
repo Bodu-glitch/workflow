@@ -30,9 +30,11 @@ function RootStack() {
       <Stack.Protected guard={isAuthenticated && ['staff', 'business_owner', 'operator'].includes(user?.role ?? '')}>
         <Stack.Screen name="(staff)" />
       </Stack.Protected>
+      <Stack.Protected guard={!isLoading && !!token}>
+        <Stack.Screen name="profile" />
+      </Stack.Protected>
       <Stack.Protected guard={isAuthenticated}>
         <Stack.Screen name="notifications" />
-        <Stack.Screen name="profile" />
         <Stack.Screen name="chat" />
       </Stack.Protected>
     </Stack>

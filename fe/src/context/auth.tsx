@@ -34,6 +34,7 @@ interface AuthContextValue extends AuthState {
   refreshProfile: () => Promise<void>;
   selectTenant: (userId: string, tenantId: string) => Promise<void>;
   switchTenant: () => Promise<void>;
+  leaveCurrentWorkspace: () => Promise<void>;
   role: UserRole | null;
 }
 
@@ -253,6 +254,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginWithGoogleForInvitation = useCallback(async (invitationToken: string) => {
+    // Clear existing session so handleSupabaseSession always runs fresh after OAuth
+    await supabase.auth.signOut().catch(() => {});
+    await tokenStore.remove();
+    await tokenStore.removeRefresh();
+    await tenantStore.remove();
+    processedSessionRef.current = null;
+
     if (Platform.OS === 'web') {
       if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(PENDING_INVITE_KEY, invitationToken);
     } else {
@@ -296,6 +304,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }));
   }, [state.user]);
 
+  const leaveCurrentWorkspace = useCallback(async () => {
+    const currentTenantId = state.user?.tenant_id;
+    const remainingTenants = ((state.user as any)?.tenants ?? []).filter(
+      (t: any) => t.id !== currentTenantId,
+    );
+    const userId = state.user?.id ?? '';
+    await tenantStore.remove();
+    setState((s) => ({
+      ...s,
+      user: null,
+      pendingSelection: { userId, tenants: remainingTenants },
+    }));
+  }, [state.user]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -306,6 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         selectTenant,
         switchTenant,
+        leaveCurrentWorkspace,
         role: state.user?.role ?? null,
       }}
     >

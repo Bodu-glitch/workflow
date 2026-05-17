@@ -1,22 +1,28 @@
 import { useState } from 'react';
-import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { ActivityIndicator, Image, Modal, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, TextInput, Pressable, ScrollView } from '@/tw';
 import { staffApi } from '@/lib/api/staff';
+import { meApi } from '@/lib/api/me';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ApiError } from '@/lib/api/client';
+import { useToast } from '@/context/toast';
 import type { WorkspaceApplication } from '@/types/api';
 
 type Tab = 'staff' | 'invitations' | 'applications';
 
 export default function BOEmployeeManagementScreen() {
   const qc = useQueryClient();
+  const { showToast } = useToast();
   const [tab, setTab] = useState<Tab>('staff');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'staff' | 'operator'>('staff');
   const [showInviteForm, setShowInviteForm] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<{ id: string; name: string } | null>(null);
+  const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
 
   const staffQuery = useQuery({
     queryKey: ['staff'],
@@ -36,16 +42,18 @@ export default function BOEmployeeManagementScreen() {
       qc.invalidateQueries({ queryKey: ['invitations'] });
       setInviteEmail('');
       setShowInviteForm(false);
-      Alert.alert('Success', 'Invitation sent');
+      showToast('Đã gửi lời mời thành công.', 'success', 'Thành công');
     },
     onError: (e) => {
       const msg =
-        e instanceof ApiError && e.code === 'EMAIL_ALREADY_EXISTS'
-          ? 'This email is already registered'
-          : e instanceof ApiError
-            ? e.message
-            : 'Failed to send invite';
-      Alert.alert('Error', msg);
+        e instanceof ApiError && e.code === 'ALREADY_IN_WORKSPACE'
+          ? 'Email này đã là thành viên trong workspace này rồi.'
+          : e instanceof ApiError && e.code === 'USER_IN_OTHER_WORKSPACE'
+            ? 'Người này đang là thành viên của workspace khác. Họ cần rời workspace hiện tại trước.'
+            : e instanceof ApiError
+              ? e.message
+              : 'Không thể gửi lời mời.';
+      showToast(msg, 'error', 'Lỗi');
     },
   });
 
@@ -53,16 +61,14 @@ export default function BOEmployeeManagementScreen() {
     mutationFn: (id: string) => staffApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }),
     onError: (e) => {
-      const msg = e instanceof ApiError ? e.message : 'Không thể xóa nhân viên';
-      if (typeof window !== 'undefined') window.alert(msg);
-      else Alert.alert('Lỗi', msg);
+      showToast(e instanceof ApiError ? e.message : 'Không thể xóa nhân viên', 'error', 'Lỗi');
     },
   });
 
   const resendMutation = useMutation({
     mutationFn: (id: string) => staffApi.resendInvite(id),
-    onSuccess: () => Alert.alert('Success', 'Invitation resent'),
-    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to resend'),
+    onSuccess: () => showToast('Đã gửi lại lời mời.', 'success', 'Thành công'),
+    onError: (e) => showToast(e instanceof ApiError ? e.message : 'Không thể gửi lại lời mời.', 'error', 'Lỗi'),
   });
 
   const applicationsQuery = useQuery({
@@ -71,20 +77,27 @@ export default function BOEmployeeManagementScreen() {
     select: (d) => d.data,
   });
 
+  const staffProfileQuery = useQuery({
+    queryKey: ['staff-profile', viewingProfileId],
+    queryFn: () => meApi.getStaffProfile(viewingProfileId!),
+    enabled: !!viewingProfileId,
+    select: (d) => d.data,
+  });
+
   const approveMutation = useMutation({
     mutationFn: (id: string) => staffApi.approveApplication(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['staff-applications'] });
       qc.invalidateQueries({ queryKey: ['staff'] });
-      Alert.alert('Đã duyệt', 'Ứng viên đã được thêm vào team');
+      showToast('Ứng viên đã được thêm vào team.', 'success', 'Đã duyệt');
     },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Không thể duyệt'),
+    onError: (e) => showToast(e instanceof ApiError ? e.message : 'Không thể duyệt', 'error', 'Lỗi'),
   });
 
   const rejectAppMutation = useMutation({
     mutationFn: (id: string) => staffApi.rejectApplication(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['staff-applications'] }),
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Không thể từ chối'),
+    onError: (e) => showToast(e instanceof ApiError ? e.message : 'Không thể từ chối', 'error', 'Lỗi'),
   });
 
   const isLoading = staffQuery.isLoading || invitationsQuery.isLoading;
@@ -94,10 +107,107 @@ export default function BOEmployeeManagementScreen() {
   if (isError) return <ErrorView onRetry={() => { staffQuery.refetch(); invitationsQuery.refetch(); }} />;
 
   const staffList = staffQuery.data ?? [];
-  const invitationList = invitationsQuery.data ?? [];
-  const applicationList: WorkspaceApplication[] = (applicationsQuery.data as any) ?? [];
+  const invitationList = (invitationsQuery.data ?? []).filter(inv => inv.status === 'pending');
+  const applicationList: WorkspaceApplication[] = ((applicationsQuery.data as any) ?? []).filter((a: WorkspaceApplication) => a.status === 'pending');
 
   return (
+    <>
+    <ConfirmDialog
+      visible={!!confirmRemove}
+      title="Xóa nhân viên"
+      message={`Bạn có chắc muốn xóa ${confirmRemove?.name ?? ''} khỏi workspace này không?`}
+      confirmLabel="Xóa"
+      cancelLabel="Hủy"
+      destructive
+      onCancel={() => setConfirmRemove(null)}
+      onConfirm={() => {
+        if (confirmRemove) removeMutation.mutate(confirmRemove.id);
+        setConfirmRemove(null);
+      }}
+    />
+
+    {/* Staff Profile Modal */}
+    <Modal visible={!!viewingProfileId} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setViewingProfileId(null)}>
+      <View className="flex-1 bg-surface">
+        <View className="px-5 pt-14 pb-4 flex-row items-center justify-between border-b border-surface-container">
+          <Text className="text-base font-bold text-on-surface">Hồ sơ ứng viên</Text>
+          <Pressable onPress={() => setViewingProfileId(null)} className="w-10 h-10 items-center justify-center rounded-xl active:opacity-60">
+            <Text className="text-on-surface-variant text-sm">✕</Text>
+          </Pressable>
+        </View>
+        <ScrollView className="flex-1 px-5 pt-4">
+          {staffProfileQuery.isLoading && (
+            <View className="py-16 items-center">
+              <ActivityIndicator color="#1E40AF" />
+            </View>
+          )}
+          {staffProfileQuery.data && (() => {
+            const p = staffProfileQuery.data;
+            const initials = p.full_name?.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase() ?? 'U';
+            return (
+              <View className="gap-5 pb-12">
+                {/* Avatar */}
+                <View className="items-center pt-2">
+                  <View className="w-20 h-20 rounded-2xl items-center justify-center" style={{ backgroundColor: '#1E40AF' }}>
+                    <Text className="text-white text-2xl font-extrabold">{initials}</Text>
+                  </View>
+                  <Text className="text-lg font-extrabold text-on-surface mt-3">{p.full_name}</Text>
+                  <Text className="text-sm text-on-surface-variant mt-0.5">{p.email}</Text>
+                </View>
+
+                {/* Contact info */}
+                <View className="bg-surface-container-lowest rounded-2xl overflow-hidden">
+                  <View className="px-4 py-3 flex-row items-center gap-3 border-b border-surface-container">
+                    <View className="flex-1">
+                      <Text className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Điện thoại</Text>
+                      <Text className="text-sm font-medium text-on-surface mt-0.5">{p.phone ?? 'Chưa cập nhật'}</Text>
+                    </View>
+                  </View>
+                  <View className="px-4 py-3 flex-row items-center gap-3">
+                    <View className="flex-1">
+                      <Text className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">CCCD</Text>
+                      <Text className={`text-sm font-medium mt-0.5 ${p.cccd ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                        {p.cccd ?? 'Chưa cập nhật'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Certificates */}
+                <View>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">
+                    Chứng chỉ ({p.certificates?.length ?? 0})
+                  </Text>
+                  {(p.certificates?.length ?? 0) === 0 ? (
+                    <View className="bg-surface-container-lowest rounded-2xl py-8 items-center">
+                      <Text className="text-on-surface-variant text-sm">Chưa có chứng chỉ nào</Text>
+                    </View>
+                  ) : (
+                    <View className="gap-3">
+                      {p.certificates.map((cert: any) => (
+                        <View key={cert.id} className="bg-surface-container-lowest rounded-2xl overflow-hidden">
+                          <Image
+                            source={{ uri: cert.file_url }}
+                            style={{ width: '100%', height: 160, backgroundColor: '#e5e7eb' }}
+                            resizeMode="cover"
+                          />
+                          <View className="px-4 py-3">
+                            <Text className="text-sm font-semibold text-on-surface">{cert.name}</Text>
+                            <Text className="text-xs text-on-surface-variant mt-0.5">
+                              {new Date(cert.uploaded_at).toLocaleDateString('vi-VN')}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })()}
+        </ScrollView>
+      </View>
+    </Modal>
     <View className="flex-1 bg-surface">
       {/* Glass Header */}
       <View className="glass-effect px-5 pt-14 pb-4">
@@ -122,7 +232,7 @@ export default function BOEmployeeManagementScreen() {
             const label =
               t === 'staff' ? `STAFF (${staffList.length})` :
               t === 'invitations' ? `INVITE (${invitationList.length})` :
-              `ỨNG TUYỂN (${applicationList.filter(a => a.status === 'pending').length})`;
+              `ỨNG TUYỂN (${applicationList.length})`;
             return (
               <Pressable
                 key={t}
@@ -217,17 +327,7 @@ export default function BOEmployeeManagementScreen() {
                   </View>
                 </View>
                 <Pressable
-                  onPress={() => {
-                    const doRemove = () => removeMutation.mutate(s.id);
-                    if (typeof window !== 'undefined') {
-                      if (window.confirm(`Xóa ${s.full_name} khỏi team?`)) doRemove();
-                    } else {
-                      Alert.alert('Xóa nhân viên', `Xóa ${s.full_name} khỏi team?`, [
-                        { text: 'Hủy', style: 'cancel' },
-                        { text: 'Xóa', style: 'destructive', onPress: doRemove },
-                      ]);
-                    }
-                  }}
+                  onPress={() => setConfirmRemove({ id: s.id, name: s.full_name })}
                   className="active:opacity-60 ml-2"
                 >
                   <Text className="text-xs font-semibold text-error">Xóa</Text>
@@ -315,6 +415,14 @@ export default function BOEmployeeManagementScreen() {
                 <Text className="text-xs text-on-surface-variant mb-3">
                   {new Date(app.applied_at).toLocaleDateString('vi-VN')}
                 </Text>
+                <View className="flex-row gap-2 mb-2">
+                  <Pressable
+                    onPress={() => setViewingProfileId(app.applicant.id)}
+                    className="flex-1 py-2.5 rounded-xl bg-surface-container items-center active:opacity-70"
+                  >
+                    <Text className="text-xs font-bold text-on-surface">Xem hồ sơ</Text>
+                  </Pressable>
+                </View>
                 {app.status === 'pending' && (
                   <View className="flex-row gap-2">
                     <Pressable
@@ -347,5 +455,6 @@ export default function BOEmployeeManagementScreen() {
         <View className="h-8" />
       </ScrollView>
     </View>
+    </>
   );
 }

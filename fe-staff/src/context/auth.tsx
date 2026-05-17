@@ -34,6 +34,7 @@ interface AuthContextValue extends AuthState {
   refreshProfile: () => Promise<void>;
   selectTenant: (userId: string, tenantId: string) => Promise<void>;
   switchTenant: () => Promise<void>;
+  leaveCurrentWorkspace: () => Promise<void>;
   role: UserRole | null;
 }
 
@@ -223,6 +224,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Restore previously selected workspace if still valid
+    if (storedTenantId) {
+      const storedMembership = staffTenants.find(t => t.id === storedTenantId);
+      if (storedMembership) {
+        await tenantStore.set(storedTenantId);
+        setState({
+          token: activeToken,
+          user: { ...typedProfile, role: storedMembership.role, tenant_id: storedTenantId },
+          isLoading: false,
+          pendingSelection: null,
+          needsOnboarding: false,
+        });
+        return;
+      }
+    }
+
+    // Only one workspace — go straight in without asking
+    if (staffTenants.length === 1) {
+      const onlyTenant = staffTenants[0];
+      await tenantStore.set(onlyTenant.id);
+      setState({
+        token: activeToken,
+        user: { ...typedProfile, role: onlyTenant.role, tenant_id: onlyTenant.id },
+        isLoading: false,
+        pendingSelection: null,
+        needsOnboarding: false,
+      });
+      return;
+    }
+
     console.log('[Auth] setState pendingSelection, staffTenants:', staffTenants.length);
     setState((s) => ({
       ...s,
@@ -325,6 +356,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }));
   }, [state.user]);
 
+  const leaveCurrentWorkspace = useCallback(async () => {
+    const currentTenantId = state.user?.tenant_id;
+    const remainingTenants = ((state.user as any)?.tenants ?? []).filter(
+      (t: any) => t.id !== currentTenantId,
+    );
+    const userId = state.user?.id ?? '';
+    await tenantStore.remove();
+    setState((s) => ({
+      ...s,
+      user: null,
+      pendingSelection: { userId, tenants: remainingTenants },
+    }));
+  }, [state.user]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -335,6 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         selectTenant,
         switchTenant,
+        leaveCurrentWorkspace,
         role: state.user?.role ?? null,
       }}
     >
