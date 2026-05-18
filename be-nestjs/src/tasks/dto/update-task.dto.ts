@@ -40,4 +40,28 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsDateString()
   deadline?: string;
+
+  @IsOptional()
+  @IsString()
+  customer_name?: string;
+
+  @IsOptional()
+  @IsString()
+  customer_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  customer_email?: string;
+
+  @IsOptional()
+  @IsString()
+  customer_note?: string;
+
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  service_type?: string;
 }

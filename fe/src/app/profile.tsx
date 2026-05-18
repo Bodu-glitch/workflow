@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+﻿import { router } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from '@/tw';
 import { useAuth } from '@/context/auth';
 
@@ -155,7 +155,7 @@ export default function ProfileScreen() {
               <View className="w-8 h-8 rounded-lg bg-surface-container items-center justify-center">
                 <Text>🔄</Text>
               </View>
-              <Text className="text-base font-semibold text-on-surface flex-1">Đổi hoặc tạo workspace</Text>
+              <Text className="text-base font-semibold text-on-surface flex-1">Switch or create workspace</Text>
               <Text className="text-on-surface-variant">›</Text>
             </Pressable>
           </View>

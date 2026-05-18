@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { ApiError } from '@/lib/api/client';
 
 const TABS = [
-  { label: 'Công việc của tôi', key: 'my' },
+  { label: 'My Jobs', key: 'my' },
   { label: 'Pool', key: 'pool' },
 ];
 
@@ -21,11 +21,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  assigned: 'Được phân công',
-  in_progress: 'Đang thực hiện',
-  pending_assignment: 'Chờ nhận',
-  completed: 'Hoàn thành',
-  completed_late: 'Hoàn thành (trễ)',
+  assigned: 'Assigned',
+  in_progress: 'In Progress',
+  pending_assignment: 'Available',
+  completed: 'Completed',
+  completed_late: 'Completed (late)',
 };
 
 export default function StaffJobsScreen() {
@@ -51,10 +51,10 @@ export default function StaffJobsScreen() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['technician-jobs'] });
       qc.invalidateQueries({ queryKey: ['technician-pool'] });
-      Alert.alert('Thành công', 'Bạn đã nhận công việc!');
+      Alert.alert('Success', 'Job claimed!');
       setActiveTab(0);
     },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Không thể nhận công việc'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Unable to claim job'),
   });
 
   const isLoading = activeTab === 0 ? loadingJobs : loadingPool;
@@ -70,7 +70,7 @@ export default function StaffJobsScreen() {
   return (
     <View className="flex-1 bg-surface">
       <View className="glass-effect px-5 pt-14 pb-3">
-        <Text className="text-2xl font-extrabold text-on-surface tracking-tight mb-3">Công việc dịch vụ</Text>
+        <Text className="text-2xl font-extrabold text-on-surface tracking-tight mb-3">Service Jobs</Text>
         <View className="flex-row gap-2">
           {TABS.map((tab, i) => (
             <Pressable
@@ -94,7 +94,7 @@ export default function StaffJobsScreen() {
           <View className="items-center justify-center py-20 gap-3">
             <Text className="text-4xl">{activeTab === 0 ? '📋' : '🔍'}</Text>
             <Text className="text-sm text-on-surface-variant">
-              {activeTab === 0 ? 'Không có công việc nào' : 'Pool trống'}
+              {activeTab === 0 ? 'No jobs' : 'Pool empty'}
             </Text>
           </View>
         ) : (
@@ -112,7 +112,7 @@ export default function StaffJobsScreen() {
               >
                 <View className="flex-row items-start justify-between mb-2">
                   <View className="flex-1 gap-1">
-                    <Text className="text-xs font-bold text-primary">{job.category?.name ?? 'Dịch vụ'}</Text>
+                    <Text className="text-xs font-bold text-primary">{job.category?.name ?? 'Service'}</Text>
                     <Text className="text-sm font-semibold text-on-surface" numberOfLines={2}>{job.description}</Text>
                   </View>
                   <View className="ml-3 items-end gap-1">
@@ -123,14 +123,14 @@ export default function StaffJobsScreen() {
                   </View>
                 </View>
                 <View className="flex-row items-center justify-between mt-1">
-                  <Text className="text-xs text-on-surface-variant">👤 {job.customer?.full_name ?? 'Khách hàng'}</Text>
-                  <Text className="text-xs text-on-surface-variant">{new Date(job.created_at).toLocaleString('vi-VN')}</Text>
+                  <Text className="text-xs text-on-surface-variant">👤 {job.customer?.full_name ?? 'Customer'}</Text>
+                  <Text className="text-xs text-on-surface-variant">{new Date(job.created_at).toLocaleString('en-US')}</Text>
                 </View>
                 {activeTab === 1 && (
                   <View className="mt-2 pt-2 border-t border-outline/20">
                     {claimMutation.isPending && claimMutation.variables === job.id
                       ? <ActivityIndicator size="small" color="#1E40AF" />
-                      : <Text className="text-xs font-bold text-primary text-center">Nhấn để nhận việc</Text>
+                      : <Text className="text-xs font-bold text-primary text-center">Tap to claim</Text>
                     }
                   </View>
                 )}

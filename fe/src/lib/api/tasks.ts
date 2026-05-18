@@ -12,11 +12,19 @@ import type {
 export interface TaskFilters {
   status?: TaskStatus;
   priority?: TaskPriority;
+  area?: string;
+  service_type?: string;
   assignee_id?: string;
   from?: string;
   to?: string;
+  search?: string;
   page?: number;
   limit?: number;
+}
+
+export interface TaskFilterOptions {
+  areas: string[];
+  service_types: string[];
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -30,6 +38,9 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 export const tasksApi = {
   dashboard: (from?: string, to?: string) =>
     apiFetch<{ data: { summary: DashboardStats } }>(`/tasks/dashboard${buildQuery({ from, to })}`),
+
+  filterOptions: () =>
+    apiFetch<{ data: TaskFilterOptions }>('/tasks/filter-options'),
 
   list: (filters: TaskFilters = {}) =>
     apiFetch<PaginatedResponse<Task>>(`/tasks${buildQuery(filters as Record<string, string | number | undefined>)}`),

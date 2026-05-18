@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+﻿import { useQuery } from '@tanstack/react-query';
 import { RefreshControl, ScrollView as RNScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { Svg, Path, Text as SvgText } from 'react-native-svg';
@@ -248,7 +248,7 @@ export default function BODashboardScreen() {
                 return (
                   <Pressable
                     key={task.id}
-                    onPress={() => router.push({ pathname: '/(bo)/tasks/[id]', params: { id: task.id } })}
+                    onPress={() => router.navigate({ pathname: '/(bo)/tasks/[id]', params: { id: task.id } })}
                     className="flex-row items-center gap-3 py-2.5 border-b border-surface-container active:opacity-70"
                   >
                     <View

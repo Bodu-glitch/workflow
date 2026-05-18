@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { View, Text, TextInput, Pressable, ScrollView } from '@/tw';
@@ -17,11 +17,11 @@ export default function SetupTenantScreen() {
 
   async function handleSubmit() {
     if (!tenantName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên workspace');
+      Alert.alert('Error', 'Please enter a workspace name');
       return;
     }
     if (!token) {
-      Alert.alert('Lỗi', 'Phiên đăng nhập không hợp lệ, vui lòng thử lại');
+      Alert.alert('Error', 'Invalid session, please try again');
       return;
     }
 
@@ -40,11 +40,11 @@ export default function SetupTenantScreen() {
       const code = e?.code ?? e?.error?.code;
       const message =
         code === 'SLUG_ALREADY_EXISTS'
-          ? 'Tên miền đã được sử dụng, vui lòng chọn tên khác'
+          ? 'This slug is already taken, please choose another'
           : code === 'INVALID_TOKEN'
-            ? 'Phiên đăng nhập hết hạn, vui lòng đăng nhập lại'
-            : 'Không thể tạo workspace, vui lòng thử lại';
-      Alert.alert('Lỗi', message);
+            ? 'Session expired, please log in again'
+            : 'Unable to create workspace, please try again';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }
@@ -61,21 +61,21 @@ export default function SetupTenantScreen() {
           <Text className="text-on-primary text-3xl font-black">T</Text>
         </View>
         <Text className="text-2xl font-extrabold text-on-surface tracking-tight">
-          Thiết lập Workspace
+          Set Up Workspace
         </Text>
         <Text className="text-sm text-on-surface-variant mt-2 text-center">
-          Tạo workspace cho doanh nghiệp của bạn
+          Create a workspace for your business
         </Text>
       </View>
 
       <View className="gap-6">
         <View className="gap-2">
           <Text className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant px-1">
-            Tên Workspace *
+            Workspace Name *
           </Text>
           <TextInput
             className="w-full h-14 px-4 bg-surface-container-high rounded-xl text-on-surface text-base"
-            placeholder="Ví dụ: Công ty ABC"
+            placeholder="E.g. ABC Company"
             placeholderTextColor="#737685"
             value={tenantName}
             onChangeText={setTenantName}
@@ -85,11 +85,11 @@ export default function SetupTenantScreen() {
 
         <View className="gap-2">
           <Text className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant px-1">
-            Tên miền (tùy chọn)
+            Slug (optional)
           </Text>
           <TextInput
             className="w-full h-14 px-4 bg-surface-container-high rounded-xl text-on-surface text-base"
-            placeholder="cong-ty-abc (tự động nếu để trống)"
+            placeholder="abc-company (auto-generated if empty)"
             placeholderTextColor="#737685"
             value={tenantSlug}
             onChangeText={setTenantSlug}
@@ -106,7 +106,7 @@ export default function SetupTenantScreen() {
           {loading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text className="text-on-primary font-bold text-base">Tạo Workspace</Text>
+            <Text className="text-on-primary font-bold text-base">Create Workspace</Text>
           )}
         </Pressable>
 
@@ -115,7 +115,7 @@ export default function SetupTenantScreen() {
           disabled={loading}
           className="w-full h-12 items-center justify-center active:opacity-60"
         >
-          <Text className="text-sm text-on-surface-variant">Đăng xuất và dùng tài khoản khác</Text>
+          <Text className="text-sm text-on-surface-variant">Sign out and use a different account</Text>
         </Pressable>
       </View>
     </ScrollView>

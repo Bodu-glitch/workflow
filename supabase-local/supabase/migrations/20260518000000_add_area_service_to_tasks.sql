@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS area text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS service_type text;

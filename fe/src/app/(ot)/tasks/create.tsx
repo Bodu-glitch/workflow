@@ -1,5 +1,7 @@
+import { useLocalSearchParams } from 'expo-router';
 import { CreateTaskWizard } from '@/components/tasks/CreateTaskWizard';
 
 export default function OTTaskCreateScreen() {
-  return <CreateTaskWizard route="ot" />;
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  return <CreateTaskWizard route="ot" taskId={id} />;
 }

@@ -1,4 +1,4 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+﻿import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 export default function StaffLayout() {
   return (
@@ -21,7 +21,7 @@ export default function StaffLayout() {
           sf={{ default: 'wrench.and.screwdriver', selected: 'wrench.and.screwdriver.fill' }}
           md="build"
         />
-        <NativeTabs.Trigger.Label>Công việc</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Jobs</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="history" disableTransparentOnScrollEdge>
@@ -29,7 +29,7 @@ export default function StaffLayout() {
           sf={{ default: 'clock.arrow.circlepath', selected: 'clock.arrow.circlepath' }}
           md="history"
         />
-        <NativeTabs.Trigger.Label>Lịch sử</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

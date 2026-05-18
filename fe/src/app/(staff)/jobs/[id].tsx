@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -49,14 +49,14 @@ export default function StaffJobDetailScreen() {
 
   const acceptMutation = useMutation({
     mutationFn: () => technicianApi.acceptJob(id),
-    onSuccess: () => { invalidate(); Alert.alert('Đã xác nhận', 'Bạn đã xác nhận nhận công việc.'); },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onSuccess: () => { invalidate(); Alert.alert('Confirmed', 'You have accepted the job.'); },
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
   const declineMutation = useMutation({
     mutationFn: () => technicianApi.declineJob(id),
     onSuccess: () => { router.back(); },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
   const startMutation = useMutation({
@@ -71,7 +71,7 @@ export default function StaffJobDetailScreen() {
       return technicianApi.startJob(id, lat, lng);
     },
     onSuccess: invalidate,
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
   const completeMutation = useMutation({
@@ -81,10 +81,10 @@ export default function StaffJobDetailScreen() {
     },
     onSuccess: () => {
       invalidate();
-      Alert.alert('Hoàn thành!', 'Công việc đã được hoàn thành thành công.');
+      Alert.alert('Done!', 'Job completed successfully.');
       router.replace('/(staff)/jobs');
     },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
   const reqouteMutation = useMutation({
@@ -92,9 +92,9 @@ export default function StaffJobDetailScreen() {
     onSuccess: () => {
       invalidate();
       setShowRequote(false);
-      Alert.alert('Đã gửi', 'Yêu cầu báo giá lại đã được gửi cho khách hàng.');
+      Alert.alert('Sent', 'Re-quote request sent to customer.');
     },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
   if (isLoading) return <LoadingScreen />;
@@ -109,10 +109,10 @@ export default function StaffJobDetailScreen() {
       <View className="glass-effect px-5 pt-14 pb-4">
         <View className="flex-row items-center gap-3">
           <Pressable onPress={() => router.back()} className="active:opacity-60">
-            <Text className="text-primary font-semibold">← Quay lại</Text>
+            <Text className="text-primary font-semibold">← Back</Text>
           </Pressable>
           <Text className="text-lg font-extrabold text-on-surface tracking-tight flex-1" numberOfLines={1}>
-            Chi tiết công việc
+            Job Details
           </Text>
         </View>
       </View>
@@ -121,19 +121,19 @@ export default function StaffJobDetailScreen() {
         className="flex-1 px-4 pt-5"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
       >
-        <Section title="Thông tin yêu cầu">
-          <InfoRow label="Dịch vụ" value={job.category?.name} />
-          <InfoRow label="Mô tả" value={job.description} />
-          <InfoRow label="Khách hàng" value={job.customer?.full_name} />
-          <InfoRow label="Điện thoại" value={job.customer?.phone} />
-          <InfoRow label="Ưu tiên" value={job.is_emergency ? '🚨 Khẩn cấp' : 'Bình thường'} />
+        <Section title="Request Info">
+          <InfoRow label="Service" value={job.category?.name} />
+          <InfoRow label="Description" value={job.description} />
+          <InfoRow label="Customer" value={job.customer?.full_name} />
+          <InfoRow label="Phone" value={job.customer?.phone} />
+          <InfoRow label="Priority" value={job.is_emergency ? '🚨 Urgent' : 'Normal'} />
           {job.agreed_price != null && (
-            <InfoRow label="Giá thỏa thuận" value={`${Number(job.agreed_price).toLocaleString('vi-VN')}₫`} />
+            <InfoRow label="Agreed Price" value={`${Number(job.agreed_price).toLocaleString('en-US')}₫`} />
           )}
         </Section>
 
         {isAssigned && (
-          <Section title="Xác nhận công việc">
+          <Section title="Accept Job">
             <View className="flex-row gap-3">
               <Pressable
                 onPress={() => acceptMutation.mutate()}
@@ -142,7 +142,7 @@ export default function StaffJobDetailScreen() {
               >
                 {acceptMutation.isPending
                   ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text className="text-white font-bold text-sm">✅ Xác nhận</Text>
+                  : <Text className="text-white font-bold text-sm">✅ Accept</Text>
                 }
               </Pressable>
               <Pressable
@@ -152,7 +152,7 @@ export default function StaffJobDetailScreen() {
               >
                 {declineMutation.isPending
                   ? <ActivityIndicator size="small" />
-                  : <Text className="text-on-error-container font-bold text-sm">✕ Từ chối</Text>
+                  : <Text className="text-on-error-container font-bold text-sm">✕ Decline</Text>
                 }
               </Pressable>
             </View>
@@ -163,17 +163,17 @@ export default function StaffJobDetailScreen() {
             >
               {startMutation.isPending
                 ? <ActivityIndicator color="#fff" />
-                : <Text className="text-white font-bold">🚗 Bắt đầu di chuyển</Text>
+                : <Text className="text-white font-bold">🚗 Start Driving</Text>
               }
             </Pressable>
           </Section>
         )}
 
         {isInProgress && (
-          <Section title="Hoàn thành công việc">
+          <Section title="Complete Job">
             <TextInput
               className="bg-surface-container-high rounded-xl px-4 py-3 text-base text-on-surface mb-3"
-              placeholder="Số tiền thu được (VNĐ)"
+              placeholder="Collected amount (VND)"
               placeholderTextColor="#737685"
               value={collectedAmount}
               onChangeText={setCollectedAmount}
@@ -187,7 +187,7 @@ export default function StaffJobDetailScreen() {
             >
               {completeMutation.isPending
                 ? <ActivityIndicator color="#fff" />
-                : <Text className="text-white font-bold text-base">🏁 Hoàn thành công việc</Text>
+                : <Text className="text-white font-bold text-base">🏁 Complete Job</Text>
               }
             </Pressable>
 
@@ -195,14 +195,14 @@ export default function StaffJobDetailScreen() {
               onPress={() => setShowRequote((v) => !v)}
               className="py-3 rounded-xl bg-surface-container-high items-center active:opacity-70"
             >
-              <Text className="text-sm font-bold text-on-surface">💬 Báo giá lại</Text>
+              <Text className="text-sm font-bold text-on-surface">💬 Re-quote</Text>
             </Pressable>
 
             {showRequote && (
               <View className="mt-3 gap-3">
                 <TextInput
                   className="bg-surface-container-high rounded-xl px-4 py-3 text-base text-on-surface"
-                  placeholder="Giá mới (VNĐ)"
+                  placeholder="New price (VND)"
                   placeholderTextColor="#737685"
                   value={requotePrice}
                   onChangeText={setRequotePrice}
@@ -210,7 +210,7 @@ export default function StaffJobDetailScreen() {
                 />
                 <TextInput
                   className="bg-surface-container-high rounded-xl px-4 py-3 text-base text-on-surface"
-                  placeholder="Lý do báo giá lại"
+                  placeholder="Re-quote reason"
                   placeholderTextColor="#737685"
                   value={requoteReason}
                   onChangeText={setRequoteReason}
@@ -223,7 +223,7 @@ export default function StaffJobDetailScreen() {
                 >
                   {reqouteMutation.isPending
                     ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text className="text-white font-bold text-sm">Gửi báo giá lại</Text>
+                    : <Text className="text-white font-bold text-sm">Send Re-quote</Text>
                   }
                 </Pressable>
               </View>

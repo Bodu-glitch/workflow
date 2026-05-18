@@ -1,4 +1,4 @@
-// ─── Auth ────────────────────────────────────────────────────────────────────
+﻿// ─── Auth ────────────────────────────────────────────────────────────────────
 
 export type UserRole = 'superadmin' | 'business_owner' | 'operator' | 'staff';
 
@@ -31,6 +31,7 @@ export interface CheckinRecord {
   notes?: string;
   checked_in_at?: string;
   checked_out_at?: string;
+  collected_amount?: number | null;
 }
 
 export interface Task {
@@ -51,6 +52,8 @@ export interface Task {
   customer_phone?: string;
   customer_email?: string;
   customer_note?: string;
+  area?: string;
+  service_type?: string;
   created_at: string;
   assignees: TaskAssignee[];
   checkin?: CheckinRecord;
@@ -81,6 +84,8 @@ export interface CreateTaskInput {
   customer_phone?: string;
   customer_email?: string;
   customer_note?: string;
+  area?: string;
+  service_type?: string;
 }
 
 export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'assignee_ids'>>;
@@ -168,6 +173,14 @@ export interface TenantInfo {
   id: string;
   name: string;
   slug: string;
+}
+
+// ─── Tenant Services ────────────────────────────────────────────────────────────
+
+export interface TenantService {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 // ─── Auth (extended) ──────────────────────────────────────────────────────────

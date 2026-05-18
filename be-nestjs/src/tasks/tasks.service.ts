@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   BadRequestException,
   NotFoundException,
@@ -102,9 +102,12 @@ export class TasksService {
   async listTasks(user: CurrentUser, pagination: PaginationDto, filters: {
     status?: string;
     priority?: string;
+    area?: string;
+    service_type?: string;
     assignee_id?: string;
     from?: string;
     to?: string;
+    search?: string;
   }) {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
@@ -120,8 +123,11 @@ export class TasksService {
 
     if (filters.status) query = query.eq('status', filters.status);
     if (filters.priority) query = query.eq('priority', filters.priority);
+    if (filters.area) query = query.eq('area', filters.area);
+    if (filters.service_type) query = query.eq('service_type', filters.service_type);
     if (filters.from) query = query.gte('created_at', filters.from);
     if (filters.to) query = query.lte('created_at', filters.to);
+    if (filters.search) query = query.ilike('title', `%${filters.search}%`);
 
     const { data, count, error } = await query
       .order('created_at', { ascending: false })
@@ -129,6 +135,21 @@ export class TasksService {
 
     if (error) throw new BadRequestException(error.message);
     return { data: (data ?? []).map((t) => this.transformTask(t)), meta: { total: count, page, limit } };
+  }
+
+  async getFilterOptions(user: CurrentUser) {
+    const [tasksRes, servicesRes] = await Promise.all([
+      this.supabase.db.from('tasks').select('area').eq('tenant_id', user.tenant_id),
+      this.supabase.db.from('tenant_services').select('name').eq('tenant_id', user.tenant_id).order('name'),
+    ]);
+
+    if (tasksRes.error) throw new BadRequestException(tasksRes.error.message);
+    if (servicesRes.error) throw new BadRequestException(servicesRes.error.message);
+
+    const areas = [...new Set((tasksRes.data ?? []).map((t: any) => t.area).filter(Boolean))].sort() as string[];
+    const serviceTypes = (servicesRes.data ?? []).map((s: any) => s.name) as string[];
+
+    return { areas, service_types: serviceTypes };
   }
 
   async getDashboard(user: CurrentUser, from?: string, to?: string) {
@@ -299,7 +320,7 @@ export class TasksService {
     return data;
   }
 
-  async rejectTask(id: string, reason: string | undefined, user: CurrentUser) {
+  async rejectTask(id: string, reason: string, user: CurrentUser) {
     const task = await this.getTask(id, user);
 
     if (['done', 'cancelled'].includes(task.status)) {

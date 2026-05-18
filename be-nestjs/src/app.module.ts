@@ -12,6 +12,7 @@ import { TasksModule } from './tasks/tasks.module.js';
 import { MeModule } from './me/me.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { TenantModule } from './tenant/tenant.module.js';
 // New rescue platform modules
 import { CategoriesModule } from './categories/categories.module.js';
 import { MatchingModule } from './matching/matching.module.js';
@@ -36,6 +37,7 @@ import { GatewayModule } from './gateway/gateway.module.js';
     MeModule,
     AuditModule,
     NotificationsModule,
+    TenantModule,
     // New modules
     CategoriesModule,
     MatchingModule,

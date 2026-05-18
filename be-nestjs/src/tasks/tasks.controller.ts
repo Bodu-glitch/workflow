@@ -9,6 +9,7 @@ import { CreateTaskDto } from './dto/create-task.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 import { AssignTaskDto } from './dto/assign-task.dto.js';
 import { CancelTaskDto } from './dto/cancel-task.dto.js';
+import { RejectTaskDto } from './dto/reject-task.dto.js';
 import { CheckinDto } from './dto/checkin.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -39,17 +40,26 @@ export class TasksController {
     return this.tasksService.getDashboard(user, from, to);
   }
 
+  /** GET /tasks/filter-options — MUST be before /:id */
+  @Get('filter-options')
+  getFilterOptions(@CurrentUser() user: CurrentUserType) {
+    return this.tasksService.getFilterOptions(user);
+  }
+
   @Get()
   listTasks(
     @CurrentUser() user: CurrentUserType,
     @Query() pagination: PaginationDto,
     @Query('status') status?: string,
     @Query('priority') priority?: string,
+    @Query('area') area?: string,
+    @Query('service_type') service_type?: string,
     @Query('assignee_id') assignee_id?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('search') search?: string,
   ) {
-    return this.tasksService.listTasks(user, pagination, { status, priority, assignee_id, from, to });
+    return this.tasksService.listTasks(user, pagination, { status, priority, area, service_type, assignee_id, from, to, search });
   }
 
   @Post()
@@ -113,10 +123,10 @@ export class TasksController {
   @Roles('business_owner', 'operator', 'superadmin')
   rejectTask(
     @Param('id') id: string,
-    @Body() body: { reason?: string },
+    @Body() dto: RejectTaskDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.tasksService.rejectTask(id, body.reason, user);
+    return this.tasksService.rejectTask(id, dto.reason, user);
   }
 
   @Post(':id/checkin')

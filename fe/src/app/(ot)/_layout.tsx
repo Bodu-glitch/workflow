@@ -1,4 +1,4 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+﻿import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 export default function OTLayout() {
   return (
@@ -45,7 +45,7 @@ export default function OTLayout() {
           sf={{ default: 'bell.badge', selected: 'bell.badge.fill' }}
           md="inbox"
         />
-        <NativeTabs.Trigger.Label>Yêu cầu</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Requests</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

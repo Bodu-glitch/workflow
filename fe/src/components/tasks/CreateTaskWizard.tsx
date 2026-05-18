@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { router } from 'expo-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, TextInput, ScrollView } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
 import { ApiError } from '@/lib/api/client';
 import { StaffPickerModal } from '@/components/tasks/StaffPickerModal';
+import { ServicePickerModal } from '@/components/tasks/ServicePickerModal';
 import { LocationPickerModal } from '@/components/LocationPickerModal';
 import type { PickedLocation } from '@/components/LocationPickerModal';
 import type { StaffMember, TaskPriority } from '@/types/api';
@@ -32,6 +33,8 @@ interface Step2 {
 interface Step3 {
   location: PickedLocation | null;
   deadline: string;
+  serviceType: string;
+  area: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -78,10 +81,11 @@ function StepBar({ current }: { current: Step }) {
 
 // ─── Success screen ───────────────────────────────────────────────────────────
 
-function SuccessScreen({ task, onCreateAnother, route }: {
+function SuccessScreen({ task, onCreateAnother, route, isEdit }: {
   task: { id: string; title: string; assignees: StaffMember[]; location: string };
   onCreateAnother: () => void;
   route: 'bo' | 'ot';
+  isEdit: boolean;
 }) {
   return (
     <View className="flex-1 bg-surface items-center justify-center px-6 gap-6">
@@ -90,9 +94,13 @@ function SuccessScreen({ task, onCreateAnother, route }: {
       </View>
 
       <View className="items-center gap-1">
-        <Text className="text-2xl font-extrabold text-on-surface text-center">Task Created Successfully!</Text>
+        <Text className="text-2xl font-extrabold text-on-surface text-center">
+          {isEdit ? 'Task Updated Successfully!' : 'Task Created Successfully!'}
+        </Text>
         <Text className="text-sm text-on-surface-variant text-center">
-          The new field operation has been recorded and synchronized with the dispatch center.
+          {isEdit
+            ? 'The task details have been updated and synchronized.'
+            : 'The new field operation has been recorded and synchronized with the dispatch center.'}
         </Text>
       </View>
 
@@ -151,13 +159,15 @@ function SuccessScreen({ task, onCreateAnother, route }: {
           <Text className="text-white font-bold text-base">View Task Details</Text>
         </Pressable>
 
-        <Pressable
-          onPress={onCreateAnother}
-          className="h-14 rounded-2xl items-center justify-center border active:opacity-70"
-          style={{ borderColor: '#1E40AF' }}
-        >
-          <Text className="font-bold text-base" style={{ color: '#1E40AF' }}>Create Another Task</Text>
-        </Pressable>
+        {!isEdit && (
+          <Pressable
+            onPress={onCreateAnother}
+            className="h-14 rounded-2xl items-center justify-center border active:opacity-70"
+            style={{ borderColor: '#1E40AF' }}
+          >
+            <Text className="font-bold text-base" style={{ color: '#1E40AF' }}>Create Another Task</Text>
+          </Pressable>
+        )}
 
         <Pressable
           onPress={() => router.replace(route === 'bo' ? '/(bo)' : '/(ot)')}
@@ -174,14 +184,17 @@ function SuccessScreen({ task, onCreateAnother, route }: {
 
 interface CreateTaskWizardProps {
   route: 'bo' | 'ot';
+  taskId?: string;
 }
 
 const INITIAL_STEP1: Step1 = { title: '', description: '', priority: null, assigneeIds: [], assignees: [] };
 const INITIAL_STEP2: Step2 = { customerName: '', customerPhone: '', customerEmail: '', customerNote: '' };
-const INITIAL_STEP3: Step3 = { location: null, deadline: '' };
+const INITIAL_STEP3: Step3 = { location: null, deadline: '', serviceType: '', area: '' };
 
-export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
+export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
   const qc = useQueryClient();
+  const isEdit = !!taskId;
+  const hasInitialized = useRef(false);
 
   const [step, setStep] = useState<Step>(1);
   const [step1, setStep1] = useState<Step1>(INITIAL_STEP1);
@@ -189,7 +202,54 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
   const [step3, setStep3] = useState<Step3>(INITIAL_STEP3);
   const [showStaffPicker, setShowStaffPicker] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [createdTask, setCreatedTask] = useState<{ id: string; title: string; assignees: StaffMember[]; location: string } | null>(null);
+  const [showServicePicker, setShowServicePicker] = useState(false);
+  const [doneTask, setDoneTask] = useState<{ id: string; title: string; assignees: StaffMember[]; location: string } | null>(null);
+
+  const { data: existingTask, isLoading: isLoadingTask } = useQuery({
+    queryKey: ['task', taskId],
+    queryFn: () => tasksApi.get(taskId!),
+    enabled: isEdit,
+    select: (d) => d.data,
+  });
+
+  useEffect(() => {
+    if (existingTask && !hasInitialized.current) {
+      hasInitialized.current = true;
+
+      setStep1({
+        title: existingTask.title,
+        description: existingTask.description ?? '',
+        priority: existingTask.priority ?? null,
+        assigneeIds: existingTask.assignees.map((a) => a.id),
+        assignees: existingTask.assignees.map((a) => ({
+          id: a.id,
+          full_name: a.full_name,
+          email: '',
+          role: 'staff' as const,
+          is_active: true,
+          created_at: '',
+        })),
+      });
+
+      setStep2({
+        customerName: existingTask.customer_name ?? '',
+        customerPhone: existingTask.customer_phone ?? '',
+        customerEmail: existingTask.customer_email ?? '',
+        customerNote: existingTask.customer_note ?? '',
+      });
+
+      setStep3({
+        location: existingTask.location_lat != null
+          ? { name: existingTask.location_name ?? '', lat: existingTask.location_lat, lng: existingTask.location_lng! }
+          : null,
+        deadline: existingTask.deadline
+          ? existingTask.deadline.replace('Z', '').substring(0, 16)
+          : '',
+        serviceType: existingTask.service_type ?? '',
+        area: existingTask.area ?? '',
+      });
+    }
+  }, [existingTask]);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -206,11 +266,14 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
         location_lat: step3.location?.lat,
         location_lng: step3.location?.lng,
         deadline: step3.deadline ? new Date(step3.deadline).toISOString() : undefined,
+        area: step3.area || undefined,
+        service_type: step3.serviceType.trim() || undefined,
       }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
-      setCreatedTask({
+      qc.invalidateQueries({ queryKey: ['task-filter-options'] });
+      setDoneTask({
         id: res.data.id,
         title: res.data.title,
         assignees: step1.assignees,
@@ -220,21 +283,66 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
     onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to create task'),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      tasksApi.update(taskId!, {
+        title: step1.title.trim(),
+        description: step1.description.trim() || undefined,
+        priority: step1.priority ?? undefined,
+        customer_name: step2.customerName.trim() || undefined,
+        customer_phone: step2.customerPhone.trim() || undefined,
+        customer_email: step2.customerEmail.trim() || undefined,
+        customer_note: step2.customerNote.trim() || undefined,
+        location_name: step3.location?.name || undefined,
+        location_lat: step3.location?.lat,
+        location_lng: step3.location?.lng,
+        deadline: step3.deadline ? new Date(step3.deadline).toISOString() : undefined,
+        area: step3.area || undefined,
+        service_type: step3.serviceType.trim() || undefined,
+      }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['task-filter-options'] });
+      setDoneTask({
+        id: res.data.id,
+        title: res.data.title,
+        assignees: step1.assignees,
+        location: step3.location?.name ?? '',
+      });
+    },
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to update task'),
+  });
+
+  const activeMutation = isEdit ? updateMutation : createMutation;
+
   function resetWizard() {
     setStep(1);
     setStep1(INITIAL_STEP1);
     setStep2(INITIAL_STEP2);
     setStep3(INITIAL_STEP3);
-    setCreatedTask(null);
+    setDoneTask(null);
+  }
+
+  // ── Loading (edit mode fetching task) ──
+  if (isEdit && isLoadingTask) {
+    return (
+      <View className="flex-1 bg-surface items-center justify-center gap-3">
+        <ActivityIndicator size="large" color="#1E40AF" />
+        <Text className="text-sm text-on-surface-variant">Loading task...</Text>
+      </View>
+    );
   }
 
   // ── Success ──
-  if (createdTask) {
+  if (doneTask) {
     return (
       <SuccessScreen
-        task={createdTask}
+        task={doneTask}
         onCreateAnother={resetWizard}
         route={route}
+        isEdit={isEdit}
       />
     );
   }
@@ -243,7 +351,7 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
   const renderStep1 = () => (
     <ScrollView className="flex-1" contentContainerClassName="px-5 py-5 gap-5">
       <View>
-        <Text className="text-2xl font-extrabold text-on-surface">New Task</Text>
+        <Text className="text-2xl font-extrabold text-on-surface">{isEdit ? 'Edit Task' : 'New Task'}</Text>
         <Text className="text-sm text-on-surface-variant mt-1">Provide the fundamental details to get started.</Text>
       </View>
 
@@ -430,54 +538,74 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
       {/* Street Address */}
       <View>
         <FieldLabel>Street Address</FieldLabel>
-        <View className="flex-row items-center h-14 px-4 rounded-xl gap-2" style={{ backgroundColor: '#f1f5f9' }}>
-          <TextInput
-            className="flex-1 text-on-surface text-base"
-            placeholder="e.g. 123 Industrial Way"
-            placeholderTextColor="#94a3b8"
-            value={step3.location?.name ?? ''}
-            onChangeText={(v) => setStep3((s) => ({
-              ...s,
-              location: s.location ? { ...s.location, name: v } : { name: v, lat: 0, lng: 0 },
-            }))}
-          />
-          <Text className="text-on-surface-variant">🔍</Text>
-        </View>
+        <TextInput
+          className="w-full h-14 px-4 rounded-xl text-on-surface text-base"
+          style={{ backgroundColor: '#f1f5f9' }}
+          placeholder="e.g. 123 Industrial Way"
+          placeholderTextColor="#94a3b8"
+          value={step3.location?.name ?? ''}
+          onChangeText={(v) => setStep3((s) => ({
+            ...s,
+            location: s.location ? { ...s.location, name: v } : { name: v, lat: 0, lng: 0 },
+          }))}
+        />
       </View>
 
       {/* Deadline */}
       <View className="flex-row gap-3">
         <View className="flex-1">
           <FieldLabel>Deadline Date</FieldLabel>
-          <View className="flex-row items-center h-14 px-4 rounded-xl gap-2" style={{ backgroundColor: '#f1f5f9' }}>
-            <TextInput
-              className="flex-1 text-on-surface text-base"
-              placeholder="2026-05-24"
-              placeholderTextColor="#94a3b8"
-              value={step3.deadline.split('T')[0] ?? ''}
-              onChangeText={(v) => setStep3((s) => ({
-                ...s,
-                deadline: v + (s.deadline.includes('T') ? 'T' + s.deadline.split('T')[1] : 'T00:00'),
-              }))}
-            />
-            <Text className="text-on-surface-variant">📅</Text>
-          </View>
+          <TextInput
+            className="w-full h-14 px-4 rounded-xl text-on-surface text-base"
+            style={{ backgroundColor: '#f1f5f9' }}
+            placeholder="2026-05-24"
+            placeholderTextColor="#94a3b8"
+            value={step3.deadline.split('T')[0] ?? ''}
+            onChangeText={(v) => setStep3((s) => ({
+              ...s,
+              deadline: v + (s.deadline.includes('T') ? 'T' + s.deadline.split('T')[1] : 'T00:00'),
+            }))}
+          />
         </View>
         <View className="flex-1">
           <FieldLabel>Deadline Time</FieldLabel>
-          <View className="flex-row items-center h-14 px-4 rounded-xl gap-2" style={{ backgroundColor: '#f1f5f9' }}>
-            <TextInput
-              className="flex-1 text-on-surface text-base"
-              placeholder="14:30"
-              placeholderTextColor="#94a3b8"
-              value={step3.deadline.includes('T') ? step3.deadline.split('T')[1] : ''}
-              onChangeText={(v) => setStep3((s) => ({
-                ...s,
-                deadline: (s.deadline.split('T')[0] ?? '') + 'T' + v,
-              }))}
-            />
-            <Text className="text-on-surface-variant">🕐</Text>
-          </View>
+          <TextInput
+            className="w-full h-14 px-4 rounded-xl text-on-surface text-base"
+            style={{ backgroundColor: '#f1f5f9' }}
+            placeholder="14:30"
+            placeholderTextColor="#94a3b8"
+            value={step3.deadline.includes('T') ? step3.deadline.split('T')[1] : ''}
+            onChangeText={(v) => setStep3((s) => ({
+              ...s,
+              deadline: (s.deadline.split('T')[0] ?? '') + 'T' + v,
+            }))}
+          />
+        </View>
+      </View>
+
+      {/* Service Type */}
+      <View>
+        <FieldLabel>Service Type</FieldLabel>
+        <Pressable
+          onPress={() => setShowServicePicker(true)}
+          className="flex-row items-center h-14 px-4 rounded-xl gap-2 active:opacity-80"
+          style={{ backgroundColor: '#f1f5f9' }}
+        >
+          <Text className="flex-1 text-base" style={{ color: step3.serviceType ? '#0f172a' : '#94a3b8' }}>
+            {step3.serviceType || 'Select service type...'}
+          </Text>
+          <Text className="text-on-surface-variant">🔧</Text>
+        </Pressable>
+      </View>
+
+      {/* Area (auto-populated from location district) */}
+      <View>
+        <FieldLabel>Area</FieldLabel>
+        <View className="flex-row items-center h-14 px-4 rounded-xl gap-2" style={{ backgroundColor: '#f1f5f9', opacity: step3.area ? 1 : 0.6 }}>
+          <Text className="flex-1 text-base" style={{ color: step3.area ? '#0f172a' : '#94a3b8' }}>
+            {step3.area || 'Auto-detected from location'}
+          </Text>
+          <Text className="text-on-surface-variant">🗺️</Text>
         </View>
       </View>
 
@@ -493,12 +621,12 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
     } else if (step === 2) {
       setStep(3);
     } else {
-      createMutation.mutate();
+      activeMutation.mutate();
     }
   }
 
   const nextLabel = step === 3
-    ? (createMutation.isPending ? '' : 'Create Task')
+    ? (activeMutation.isPending ? '' : isEdit ? 'Save Changes' : 'Create Task')
     : 'Next →';
 
   return (
@@ -514,7 +642,11 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
               <Text className="text-primary font-semibold text-base">←</Text>
             </Pressable>
             <Text className="text-base font-bold text-on-surface flex-1">
-              {step === 1 ? 'New Task' : step === 2 ? 'Customer Info' : 'Location & Deadline'}
+              {step === 1
+                ? (isEdit ? 'Edit Task' : 'New Task')
+                : step === 2
+                ? 'Customer Info'
+                : 'Location & Deadline'}
             </Text>
           </View>
 
@@ -530,11 +662,11 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
       <View className="absolute bottom-0 left-0 right-0 px-5 pb-10 pt-3 bg-surface border-t border-surface-container">
         <Pressable
           onPress={handleNext}
-          disabled={createMutation.isPending}
+          disabled={activeMutation.isPending}
           className="h-14 rounded-2xl items-center justify-center active:opacity-80 disabled:opacity-60"
           style={{ backgroundColor: '#1E40AF' }}
         >
-          {createMutation.isPending ? (
+          {activeMutation.isPending ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text className="text-white font-bold text-base">{nextLabel}</Text>
@@ -555,10 +687,16 @@ export function CreateTaskWizard({ route }: CreateTaskWizardProps) {
       <LocationPickerModal
         visible={showLocationPicker}
         onClose={() => setShowLocationPicker(false)}
-        onConfirm={(loc) => { setStep3((s) => ({ ...s, location: loc })); setShowLocationPicker(false); }}
+        onConfirm={(loc) => { setStep3((s) => ({ ...s, location: loc, area: loc.district ?? s.area })); setShowLocationPicker(false); }}
         initialLat={step3.location?.lat}
         initialLng={step3.location?.lng}
         initialName={step3.location?.name}
+      />
+      <ServicePickerModal
+        visible={showServicePicker}
+        selected={step3.serviceType || undefined}
+        onConfirm={(name) => { setStep3((s) => ({ ...s, serviceType: name })); setShowServicePicker(false); }}
+        onClose={() => setShowServicePicker(false)}
       />
     </>
   );

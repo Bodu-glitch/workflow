@@ -5,17 +5,31 @@ import { View, Text, Pressable, TextInput } from '@/tw';
 const DEFAULT_LAT = 10.7769;
 const DEFAULT_LNG = 106.7009;
 
+interface NominatimAddress {
+  city_district?: string;
+  county?: string;
+  suburb?: string;
+  city?: string;
+}
+
 interface NominatimResult {
   place_id: number;
   display_name: string;
   lat: string;
   lon: string;
+  address?: NominatimAddress;
+}
+
+interface NominatimReverseResult {
+  display_name: string;
+  address?: NominatimAddress;
 }
 
 export interface PickedLocation {
   name: string;
   lat: number;
   lng: number;
+  district?: string;
 }
 
 interface Props {
@@ -25,6 +39,24 @@ interface Props {
   initialLat?: number;
   initialLng?: number;
   initialName?: string;
+}
+
+function extractDistrict(address?: NominatimAddress): string | undefined {
+  if (!address) return undefined;
+  return address.city_district ?? address.county ?? address.suburb ?? undefined;
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<{ name: string; district?: string }> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=vi`,
+      { headers: { 'User-Agent': 'TaskManagementApp/1.0' } },
+    );
+    const data: NominatimReverseResult = await res.json();
+    return { name: data.display_name, district: extractDistrict(data.address) };
+  } catch {
+    return { name: '' };
+  }
 }
 
 function buildMapHtml(lat: number, lng: number): string {
@@ -69,6 +101,7 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
   const [currentLat, setCurrentLat] = useState(DEFAULT_LAT);
   const [currentLng, setCurrentLng] = useState(DEFAULT_LNG);
   const [currentName, setCurrentName] = useState('');
+  const [currentDistrict, setCurrentDistrict] = useState<string | undefined>();
   const [mapHtml, setMapHtml] = useState('');
 
   useEffect(() => {
@@ -78,6 +111,7 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
     setCurrentLat(lat);
     setCurrentLng(lng);
     setCurrentName(initialName ?? '');
+    setCurrentDistrict(undefined);
     setQuery('');
     setResults([]);
     setShowResults(false);
@@ -85,14 +119,17 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Listen for messages from iframe
+  // Listen for drag events from iframe
   useEffect(() => {
-    function handleMessage(e: MessageEvent) {
+    async function handleMessage(e: MessageEvent) {
       try {
         const data = JSON.parse(e.data as string) as { lat: number; lng: number };
         if (typeof data.lat === 'number' && typeof data.lng === 'number') {
           setCurrentLat(data.lat);
           setCurrentLng(data.lng);
+          const geo = await reverseGeocode(data.lat, data.lng);
+          if (geo.name) setCurrentName(geo.name);
+          setCurrentDistrict(geo.district);
         }
       } catch {
         // ignore
@@ -112,7 +149,7 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
       setSearching(true);
       try {
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&accept-language=vi`,
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1&accept-language=vi`,
           { headers: { 'User-Agent': 'TaskManagementApp/1.0' } },
         );
         const data: NominatimResult[] = await res.json();
@@ -133,6 +170,7 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
     setCurrentLat(lat);
     setCurrentLng(lng);
     setCurrentName(result.display_name);
+    setCurrentDistrict(extractDistrict(result.address));
     setShowResults(false);
     setQuery('');
     iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ lat, lng }), '*');
@@ -144,10 +182,10 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
         {/* Header */}
         <View className="glass-effect px-5 pt-14 pb-4 flex-row items-center">
           <Pressable onPress={onClose} className="mr-3 active:opacity-60">
-            <Text className="text-primary font-semibold">← Huỷ</Text>
+            <Text className="text-primary font-semibold">← Cancel</Text>
           </Pressable>
           <Text className="text-xl font-extrabold text-on-surface tracking-tight flex-1">
-            Chọn địa điểm
+            Select Location
           </Text>
         </View>
 
@@ -161,7 +199,7 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
             )}
             <TextInput
               className="flex-1 text-on-surface text-base"
-              placeholder="Tìm địa điểm..."
+              placeholder="Search location..."
               placeholderTextColor="#737685"
               value={query}
               onChangeText={setQuery}
@@ -186,7 +224,7 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
               ref={iframeRef}
               srcDoc={mapHtml}
               style={{ flex: 1, border: 'none', width: '100%', height: '100%' } as any}
-              title="Bản đồ"
+              title="Map"
             />
           ) : null}
 
@@ -218,10 +256,10 @@ export function LocationPickerModal({ visible, onClose, onConfirm, initialLat, i
             </View>
           ) : null}
           <Pressable
-            onPress={() => onConfirm({ name: currentName, lat: currentLat, lng: currentLng })}
+            onPress={() => onConfirm({ name: currentName, lat: currentLat, lng: currentLng, district: currentDistrict })}
             className="kinetic-gradient rounded-2xl py-4 items-center active:opacity-80"
           >
-            <Text className="text-on-primary font-bold text-base">Xác nhận vị trí</Text>
+            <Text className="text-on-primary font-bold text-base">Confirm Location</Text>
           </Pressable>
         </View>
       </View>
