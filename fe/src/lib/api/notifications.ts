@@ -6,7 +6,7 @@ export const notificationsApi = {
     apiFetch<PaginatedResponse<Notification>>(`/notifications?page=${page}&limit=${limit}`),
 
   unreadCount: () =>
-    apiFetch<{ data: { unread_count: number } }>('/notifications/unread-count'),
+    apiFetch<{ data: { count: number } }>('/notifications/unread-count'),
 
   markRead: (id: string) =>
     apiFetch<{ data: { success: boolean } }>(`/notifications/${id}/read`, {

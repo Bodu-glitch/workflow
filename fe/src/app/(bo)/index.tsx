@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { Svg, Path, Text as SvgText } from 'react-native-svg';
 import { View, Text, Pressable, ScrollView } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
-import { notificationsApi } from '@/lib/api/notifications';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 import { AppHeader } from '@/components/AppHeader';
@@ -97,11 +96,6 @@ export default function BODashboardScreen() {
     queryFn: () => tasksApi.dashboard(),
   });
 
-  const { data: unreadData } = useQuery({
-    queryKey: ['unread-count'],
-    queryFn: () => notificationsApi.unreadCount(),
-  });
-
   const { data: recentTasksData } = useQuery({
     queryKey: ['recent-tasks'],
     queryFn: () => tasksApi.list({ page: 1, limit: 3 }),
@@ -120,8 +114,6 @@ export default function BODashboardScreen() {
   const stats = data?.data?.summary ?? emptyStats();
   const todayStats = todayData?.data?.summary ?? emptyStats();
   const total = stats.todo + stats.in_progress + stats.done + stats.cancelled + stats.rejected + stats.overdue;
-  const unreadCount = unreadData?.data?.unread_count ?? 0;
-
   const currentTenant = user?.tenants?.find((t) => t.id === user.tenant_id) ?? user?.tenants?.[0];
   const tenantName = currentTenant?.name ?? 'My Workspace';
 
@@ -146,7 +138,7 @@ export default function BODashboardScreen() {
 
   return (
     <View collapsable={false} style={{ flex: 1, backgroundColor: '#f8f9ff' }}>
-      <AppHeader tenantName={tenantName} unreadCount={unreadCount} />
+      <AppHeader tenantName={tenantName} />
 
       <ScrollView
         className="flex-1"

@@ -21,9 +21,26 @@ export class NotificationsService {
   ) {}
 
   async sendPushNotification(payload: PushPayload): Promise<void> {
+    // Insert directly into notifications table — guarantees in-app delivery
+    const records = payload.user_ids.map((userId) => ({
+      tenant_id: payload.tenant_id ?? null,
+      user_id: userId,
+      task_id: payload.task_id ?? null,
+      type: payload.type,
+      title: payload.title,
+      body: payload.body,
+    }));
+
+    if (records.length > 0) {
+      const { error } = await this.supabase.db.from('notifications').insert(records);
+      if (error) {
+        console.error('[Notifications] DB insert failed:', error.message);
+      }
+    }
+
+    // Also call Edge Function for Expo push notifications (best-effort)
     const supabaseUrl = this.config.getOrThrow<string>('SUPABASE_URL');
     const serviceRoleKey = this.config.getOrThrow<string>('SUPABASE_SERVICE_ROLE_KEY');
-
     try {
       await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
         method: 'POST',
@@ -34,8 +51,7 @@ export class NotificationsService {
         body: JSON.stringify(payload),
       });
     } catch {
-      // Non-critical: log and continue
-      console.error('[Notifications] Edge function call failed');
+      // Non-critical: edge function handles Expo push only
     }
   }
 

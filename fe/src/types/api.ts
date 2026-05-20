@@ -140,8 +140,10 @@ export interface AuditLog {
 
 export interface Notification {
   id: string;
+  type: string;
   title: string;
   body: string;
+  task_id: string | null;
   is_read: boolean;
   data: Record<string, unknown>;
   created_at: string;
