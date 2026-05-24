@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { StaffMember, Invitation, InAppInvitation, PaginatedResponse, WorkspaceApplication } from '@/types/api';
+import type { StaffMember, Invitation, InAppInvitation, PaginatedResponse, WorkspaceApplication, ViolationNote } from '@/types/api';
 
 export const staffApi = {
   list: (page = 1, limit = 20) =>
@@ -54,5 +54,41 @@ export const staffApi = {
   rejectApplication: (id: string) =>
     apiFetch<{ data: { message: string } }>(`/staff/applications/${id}/reject`, {
       method: 'PATCH',
+    }),
+
+  /** PATCH /staff/:id/lock — BO only */
+  lock: (id: string, reason?: string) =>
+    apiFetch<{ data: { user_id: string; is_active: boolean } }>(`/staff/${id}/lock`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason }),
+    }),
+
+  /** PATCH /staff/:id/unlock — BO only */
+  unlock: (id: string) =>
+    apiFetch<{ data: { user_id: string; is_active: boolean } }>(`/staff/${id}/unlock`, {
+      method: 'PATCH',
+    }),
+
+  /** PATCH /staff/me/online-status — staff/OT/BO */
+  updateOnlineStatus: (status: 'online' | 'offline' | 'working') =>
+    apiFetch<{ data: { status: string } }>('/staff/me/online-status', {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  // ── Violation Notes ───────────────────────────────────────────────────────
+
+  listViolations: (staffId: string) =>
+    apiFetch<{ data: ViolationNote[] }>(`/staff/${staffId}/violations`),
+
+  addViolation: (staffId: string, content: string) =>
+    apiFetch<{ data: ViolationNote }>(`/staff/${staffId}/violations`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+
+  deleteViolation: (staffId: string, noteId: string) =>
+    apiFetch<{ data: { success: boolean } }>(`/staff/${staffId}/violations/${noteId}`, {
+      method: 'DELETE',
     }),
 };

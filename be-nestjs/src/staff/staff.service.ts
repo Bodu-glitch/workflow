@@ -220,12 +220,13 @@ export class StaffService {
     const { data, count, error } = await this.supabase.db
       .from('user_tenants')
       .select(
-        'role, is_active, created_at, users!inner(id, email, full_name, phone, avatar_url, last_login_at)',
+        'role, is_active, online_status, lock_reason, created_at, users!inner(id, email, full_name, phone, avatar_url, last_login_at)',
         { count: 'exact' },
       )
       .eq('tenant_id', tenantId)
       .in('role', ['staff', 'operator'])
-      .eq('is_active', true)
+      // NOTE: no is_active filter — return ALL staff including locked ones
+      .order('is_active', { ascending: false })   // active first
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -240,10 +241,92 @@ export class StaffService {
       last_login_at: row.users.last_login_at,
       role: row.role,
       is_active: row.is_active,
+      online_status: row.online_status ?? 'offline',
+      lock_reason: row.lock_reason ?? null,
       created_at: row.created_at,
     }));
 
     return { data: normalized, meta: { total: count, page, limit } };
+  }
+
+  /** PATCH /staff/:id/lock — BO only: deactivate a staff member */
+  async lockStaff(staffId: string, tenantId: string, reason?: string) {
+    const { data, error } = await this.supabase.db
+      .from('user_tenants')
+      .update({
+        is_active: false,
+        online_status: 'offline',
+        lock_reason: reason ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', staffId)
+      .eq('tenant_id', tenantId)
+      .in('role', ['staff', 'operator'])
+      .select('user_id, is_active, online_status, lock_reason')
+      .single();
+
+    if (error || !data) throw new NotFoundException({ code: 'STAFF_NOT_FOUND', message: 'Không tìm thấy nhân viên trong workspace này' });
+    return data;
+  }
+
+  /** PATCH /staff/:id/unlock — BO only: reactivate a staff member */
+  async unlockStaff(staffId: string, tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('user_tenants')
+      .update({ is_active: true, lock_reason: null, updated_at: new Date().toISOString() })
+      .eq('user_id', staffId)
+      .eq('tenant_id', tenantId)
+      .in('role', ['staff', 'operator'])
+      .select('user_id, is_active, online_status')
+      .single();
+
+    if (error || !data) throw new NotFoundException({ code: 'STAFF_NOT_FOUND', message: 'Không tìm thấy nhân viên trong workspace này' });
+    return data;
+  }
+
+  // ── Violation Notes ──────────────────────────────────────────────────────
+
+  async listViolationNotes(staffId: string, tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('staff_violation_notes')
+      .select('*, users!created_by(id, full_name)')
+      .eq('user_id', staffId)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async addViolationNote(staffId: string, tenantId: string, createdBy: string, content: string) {
+    const { data, error } = await this.supabase.db
+      .from('staff_violation_notes')
+      .insert({ user_id: staffId, tenant_id: tenantId, created_by: createdBy, content })
+      .select('*, users!created_by(id, full_name)')
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async deleteViolationNote(noteId: string, tenantId: string) {
+    const { error } = await this.supabase.db
+      .from('staff_violation_notes')
+      .delete()
+      .eq('id', noteId)
+      .eq('tenant_id', tenantId);
+    if (error) throw new BadRequestException(error.message);
+    return { success: true };
+  }
+
+  /** PATCH /staff/me/online-status — staff updates own presence */
+  async updateOnlineStatus(userId: string, tenantId: string, status: 'online' | 'offline' | 'working') {
+    const { error } = await this.supabase.db
+      .from('user_tenants')
+      .update({ online_status: status })
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId);
+
+    if (error) throw new BadRequestException(error.message);
+    return { status };
   }
 
   async listInvitations(tenantId: string, pagination: PaginationDto) {
@@ -445,18 +528,30 @@ export class StaffService {
     return { message: 'Invitation declined' };
   }
 
-  async searchWorkspaces(query: string) {
+  async searchWorkspaces(
+    query: string,
+    filters: { industry?: string; area?: string; benefits?: string } = {},
+  ) {
     const q = (query ?? '').trim();
 
     let builder = this.supabase.db
       .from('tenants')
-      .select('id, name, slug')
+      .select('id, name, slug, description, industry, operating_area, benefits, income_level, policies')
       .eq('status', 'active')
       .order('name')
       .limit(50);
 
     if (q.length >= 2) {
       builder = builder.or(`slug.ilike.%${q}%,name.ilike.%${q}%`);
+    }
+    if (filters.industry) {
+      builder = builder.ilike('industry', `%${filters.industry}%`);
+    }
+    if (filters.area) {
+      builder = builder.ilike('operating_area', `%${filters.area}%`);
+    }
+    if (filters.benefits) {
+      builder = builder.ilike('benefits', `%${filters.benefits}%`);
     }
 
     const { data } = await builder;

@@ -43,8 +43,16 @@ export const staffApi = {
       method: 'PATCH',
     }),
 
-  searchWorkspaces: (q: string) =>
-    apiFetch<{ data: WorkspaceSearchResult[] }>(`/staff/search-workspaces?q=${encodeURIComponent(q)}`),
+  searchWorkspaces: (
+    q: string,
+    filters: { industry?: string; area?: string; benefits?: string } = {},
+  ) => {
+    const params = new URLSearchParams({ q });
+    if (filters.industry) params.set('industry', filters.industry);
+    if (filters.area) params.set('area', filters.area);
+    if (filters.benefits) params.set('benefits', filters.benefits);
+    return apiFetch<{ data: WorkspaceSearchResult[] }>(`/staff/search-workspaces?${params.toString()}`);
+  },
 
   apply: (tenantId: string, message?: string) =>
     apiFetch<{ data: { message: string; application: { id: string; status: string; tenant: WorkspaceSearchResult } } }>('/staff/apply', {
@@ -58,5 +66,12 @@ export const staffApi = {
   withdrawApplication: (id: string) =>
     apiFetch<{ data: { message: string } }>(`/staff/applications/${id}/withdraw`, {
       method: 'PATCH',
+    }),
+
+  /** PATCH /staff/me/online-status — cập nhật trạng thái online của bản thân */
+  updateOnlineStatus: (status: 'online' | 'offline' | 'working') =>
+    apiFetch<{ data: { status: string } }>('/staff/me/online-status', {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     }),
 };

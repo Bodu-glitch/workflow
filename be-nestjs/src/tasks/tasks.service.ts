@@ -416,6 +416,31 @@ export class TasksService {
     const newStatus = type === 'checkin' ? 'in_progress' : 'done';
     await this.supabase.db.from('tasks').update({ status: newStatus }).eq('id', taskId);
 
+    // Auto-update online_status
+    if (type === 'checkin') {
+      // Check-in → đang làm việc
+      await this.supabase.db
+        .from('user_tenants')
+        .update({ online_status: 'working' })
+        .eq('user_id', user.id)
+        .eq('tenant_id', user.tenant_id);
+    } else {
+      // Check-out → online nếu còn ca hôm nay, ngược lại offline
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todayShifts } = await this.supabase.db
+        .from('shift_assignments')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('tenant_id', user.tenant_id)
+        .eq('work_date', today);
+      const backStatus = (todayShifts?.length ?? 0) > 0 ? 'online' : 'offline';
+      await this.supabase.db
+        .from('user_tenants')
+        .update({ online_status: backStatus })
+        .eq('user_id', user.id)
+        .eq('tenant_id', user.tenant_id);
+    }
+
     const auditAction = type === 'checkin' ? 'checkin' : 'checkout';
     await this.supabase.db.from('audit_logs').insert({
       tenant_id: user.tenant_id,

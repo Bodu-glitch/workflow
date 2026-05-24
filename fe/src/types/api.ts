@@ -93,9 +93,26 @@ export interface StaffMember {
   full_name: string;
   role: UserRole;
   phone?: string;
+  avatar_url?: string;
+  last_login_at?: string;
   is_active: boolean;
+  online_status: 'online' | 'offline' | 'working';
+  lock_reason?: string | null;
   created_at: string;
 }
+
+export interface ViolationNote {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  content: string;
+  created_by: string;
+  created_at: string;
+  users?: { id: string; full_name: string };
+}
+
+/** Computed display status for UI — derived from is_active + online_status */
+export type StaffDisplayStatus = 'online' | 'working' | 'offline' | 'locked';
 
 export interface Invitation {
   id: string;
@@ -190,6 +207,64 @@ export interface TenantInfo {
   slug: string;
 }
 
+export interface WorkspaceProfile {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url?: string;
+  description?: string;
+  industry?: string;
+  operating_area?: string;
+  benefits?: string;
+  income_level?: string;
+  policies?: string;
+  status: 'active' | 'inactive' | 'suspended' | 'pending';
+  created_at: string;
+}
+
+export interface UpdateWorkspaceInput {
+  name?: string;
+  description?: string;
+  industry?: string;
+  operating_area?: string;
+  benefits?: string;
+  income_level?: string;
+  policies?: string;
+}
+
+// ─── Workspace Stats ──────────────────────────────────────────────────────────
+
+export interface WorkspaceStats {
+  orders: {
+    total: number;
+    completed: number;
+    in_progress: number;
+    cancelled: number;
+    pending: number;
+  };
+  revenue: {
+    total: number;
+    currency: string;
+  };
+  rating: {
+    avg: number | null;
+    count: number;
+    distribution: Record<string, number>; // '1'–'5' → count
+  };
+}
+
+// ─── Service Category (platform-defined) ──────────────────────────────────────
+
+export interface ServiceCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon_url?: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
 // ─── Auth (extended) ──────────────────────────────────────────────────────────
 
 export interface GoogleOnboardingResponse {
@@ -210,4 +285,58 @@ export interface InAppInvitation {
   expires_at: string;
   created_at: string;
   tenants: TenantInfo;
+}
+
+// ─── Work Schedule ────────────────────────────────────────────────────────────
+
+export interface WorkShift {
+  id: string;
+  tenant_id: string;
+  name: string;
+  start_time: string; // "HH:MM"
+  end_time: string;
+  color: string;
+  created_at: string;
+}
+
+export interface ShiftAssignmentUser {
+  id: string;
+  full_name: string;
+  avatar_url?: string;
+}
+
+export interface ShiftAssignment {
+  id: string;
+  shift_id: string;
+  work_date: string;
+  note?: string;
+  created_at: string;
+  users: ShiftAssignmentUser;
+  work_shifts: Pick<WorkShift, 'id' | 'name' | 'start_time' | 'end_time' | 'color'>;
+}
+
+export interface MyShiftAssignment {
+  id: string;
+  work_date: string;
+  note?: string;
+  work_shifts: Pick<WorkShift, 'id' | 'name' | 'start_time' | 'end_time' | 'color'>;
+}
+
+export type LeaveType = 'annual' | 'sick' | 'personal' | 'other';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected';
+
+export interface LeaveRequest {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  type: LeaveType;
+  start_date: string;
+  end_date: string;
+  reason?: string;
+  status: LeaveStatus;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  reject_reason?: string;
+  created_at: string;
+  users?: { id: string; full_name: string; email: string; avatar_url?: string };
 }

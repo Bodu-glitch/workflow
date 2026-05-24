@@ -40,12 +40,12 @@ export default function OTLayout() {
         <NativeTabs.Trigger.Label>Assign</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="requests" disableTransparentOnScrollEdge>
+      <NativeTabs.Trigger name="schedule" disableTransparentOnScrollEdge>
         <NativeTabs.Trigger.Icon
-          sf={{ default: 'bell.badge', selected: 'bell.badge.fill' }}
-          md="inbox"
+          sf={{ default: 'calendar', selected: 'calendar.badge.clock' }}
+          md="calendar_month"
         />
-        <NativeTabs.Trigger.Label>Yêu cầu</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Lịch</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

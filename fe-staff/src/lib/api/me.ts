@@ -8,6 +8,8 @@ export interface UserCertificate {
   uploaded_at: string;
 }
 
+export type OnlineStatus = 'online' | 'offline' | 'working';
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -16,6 +18,7 @@ export interface UserProfile {
   avatar_url?: string;
   cccd?: string;
   certificates: UserCertificate[];
+  online_status?: OnlineStatus | null;
 }
 
 export const meApi = {

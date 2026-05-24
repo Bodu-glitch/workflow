@@ -11,7 +11,7 @@ interface CurrentUser {
 export class MeService {
   constructor(private supabase: SupabaseService) {}
 
-  async getProfile(userId: string) {
+  async getProfile(userId: string, tenantId?: string) {
     const { data, error } = await this.supabase.db
       .from('users')
       .select('id, email, full_name, phone, avatar_url, cccd, last_login_at')
@@ -25,7 +25,18 @@ export class MeService {
       .eq('user_id', userId)
       .order('uploaded_at', { ascending: false });
 
-    return { ...data, certificates: certs ?? [] };
+    let online_status: string | null = null;
+    if (tenantId) {
+      const { data: membership } = await this.supabase.db
+        .from('user_tenants')
+        .select('online_status')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .single();
+      online_status = membership?.online_status ?? 'offline';
+    }
+
+    return { ...data, certificates: certs ?? [], online_status };
   }
 
   async updateProfile(userId: string, dto: { full_name?: string; phone?: string; cccd?: string }) {
@@ -151,9 +162,17 @@ export class MeService {
 
     await this.supabase.db
       .from('user_tenants')
-      .update({ is_active: false })
+      .delete()
       .eq('user_id', userId)
       .eq('tenant_id', tenantId);
+
+    // Reset approved application so auto-enter in select-tenant doesn't re-trigger
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'withdrawn' })
+      .eq('applicant_id', userId)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'approved');
 
     await this.supabase.db.from('audit_logs').insert({
       tenant_id: tenantId,

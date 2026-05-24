@@ -22,7 +22,7 @@ export class MeController {
 
   @Get('profile')
   getProfile(@CurrentUser() user: CurrentUserType) {
-    return this.meService.getProfile(user.id);
+    return this.meService.getProfile(user.id, user.tenant_id);
   }
 
   @Patch('profile')

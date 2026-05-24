@@ -33,9 +33,7 @@ export function ConfirmDialog({
               backgroundColor: '#fff',
               borderRadius: 20,
               padding: 24,
-              shadowColor: '#000',
-              shadowOpacity: 0.2,
-              shadowRadius: 20,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.2)',
               elevation: 8,
             }}
           >

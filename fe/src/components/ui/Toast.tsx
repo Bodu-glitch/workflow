@@ -39,9 +39,7 @@ export function ToastItem({ title, message, type, onDismiss }: ToastItemProps) {
         marginBottom: 8,
         flexDirection: 'row',
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOpacity: 0.18,
-        shadowRadius: 10,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
         elevation: 5,
       }}
     >

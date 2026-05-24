@@ -72,7 +72,24 @@
       "PowerShell(Get-ChildItem D:\\\\workflow\\\\fe\\\\src -Directory | ForEach-Object { $_.Name })",
       "mcp__playwright__browser_run_code_unsafe",
       "Bash(Get-ChildItem -Path \"D:\\\\workflow\\\\fe\\\\src\\\\context\" -Recurse)",
-      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(e.get\\('id'\\), e.get\\('to'\\), e.get\\('subject'\\), e.get\\('last_event'\\)\\) for e in data.get\\('data',[]\\)]\")"
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(e.get\\('id'\\), e.get\\('to'\\), e.get\\('subject'\\), e.get\\('last_event'\\)\\) for e in data.get\\('data',[]\\)]\")",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(cd D:\\\\workflow\\\\be-nestjs; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd D:\\\\workflow\\\\be-nestjs; npm run start:dev\" -WindowStyle Minimized)",
+      "PowerShell(cd D:\\\\workflow\\\\fe; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd D:\\\\workflow\\\\fe; npx expo start --web --port 8081\" -WindowStyle Minimized)",
+      "PowerShell(cd D:\\\\workflow\\\\fe-staff; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd D:\\\\workflow\\\\fe-staff; npx expo start --web --port 8082\" -WindowStyle Minimized)",
+      "PowerShell(cd D:\\\\workflow\\\\supabase-local; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd D:\\\\workflow\\\\supabase-local; supabase start\" -WindowStyle Normal)",
+      "PowerShell(head *)",
+      "Bash(supabase start *)",
+      "Bash(echo \"Supabase starting in background, PID=$!\")",
+      "PowerShell(Start-Process powershell -Verb RunAs -ArgumentList \"-Command\", \"net stop winnat; netsh int ipv4 add excludedportrange protocol=tcp startport=54320 numberofports=20; net start winnat; Write-Host 'DONE'\" -Wait 2>&1)",
+      "Bash(python3 -c \"import sys,json; users=json.load\\(sys.stdin\\).get\\('users',[]\\); [print\\(u['id'], u.get\\('email',''\\), u.get\\('role',''\\)\\) for u in users]\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);r.users.forEach\\(u=>console.log\\(u.id,u.email\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);console.log\\('token:',r.hashed_token,'otp:',r.email_otp,'link:',r.action_link\\)}\\)\")",
+      "Bash(grep -o \"sb-\\\\${[^}]*}-auth-token\\\\|storageKey.*=.*\\\\`sb-\" \"D:\\\\workflow\\\\fe-staff\\\\node_modules\\\\@supabase\\\\supabase-js\\\\dist\\\\umd\\\\supabase.js\")",
+      "mcp__playwright__browser_file_upload",
+      "Bash(git add *)",
+      "Bash(git commit -m 'feat\\(invitation/workspace\\): improve invitations UX and fix workspace leave flow *)",
+      "Bash(git push *)"
     ]
   },
   "enabledMcpjsonServers": [
