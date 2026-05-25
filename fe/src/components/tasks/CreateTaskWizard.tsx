@@ -273,6 +273,7 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['task-filter-options'] });
+      qc.invalidateQueries({ queryKey: ['task-chart'] });
       setDoneTask({
         id: res.data.id,
         title: res.data.title,
@@ -305,6 +306,7 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['task-filter-options'] });
+      qc.invalidateQueries({ queryKey: ['task-chart'] });
       setDoneTask({
         id: res.data.id,
         title: res.data.title,

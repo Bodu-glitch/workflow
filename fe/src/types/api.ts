@@ -69,6 +69,13 @@ export interface DashboardStats {
   overdue: number;
 }
 
+export interface TaskChartData {
+  labels: string[];
+  created: number[];
+  completed: number[];
+  overdue: number[];
+}
+
 export interface CreateTaskInput {
   title: string;
   description?: string;

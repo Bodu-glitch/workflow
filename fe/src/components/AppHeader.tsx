@@ -1,3 +1,4 @@
+import React from "react";
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
@@ -5,9 +6,10 @@ import { NotifBell } from './NotifBell';
 
 interface AppHeaderProps {
   tenantName: string;
+  rightAction?: React.ReactNode;
 }
 
-export function AppHeader({ tenantName }: AppHeaderProps) {
+export function AppHeader({ tenantName, rightAction }: AppHeaderProps) {
   const initials = tenantName
     .split(' ')
     .slice(0, 2)
@@ -31,6 +33,7 @@ export function AppHeader({ tenantName }: AppHeaderProps) {
       </Pressable>
 
       <View className="flex-row items-center gap-1">
+        {rightAction}
         <Pressable
           onPress={() => router.push('/chat')}
           className="w-10 h-10 items-center justify-center active:opacity-60"
