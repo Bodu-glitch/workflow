@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 
@@ -10,6 +10,179 @@ interface CurrentUser {
 @Injectable()
 export class MeService {
   constructor(private supabase: SupabaseService) {}
+
+  async getProfile(userId: string, tenantId?: string) {
+    const { data, error } = await this.supabase.db
+      .from('users')
+      .select('id, email, full_name, phone, avatar_url, cccd, last_login_at')
+      .eq('id', userId)
+      .single();
+    if (error || !data) throw new NotFoundException('User not found');
+
+    const { data: certs } = await this.supabase.db
+      .from('user_certificates')
+      .select('id, name, file_url, uploaded_at')
+      .eq('user_id', userId)
+      .order('uploaded_at', { ascending: false });
+
+    let online_status: string | null = null;
+    if (tenantId) {
+      const { data: membership } = await this.supabase.db
+        .from('user_tenants')
+        .select('online_status')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .single();
+      online_status = membership?.online_status ?? 'offline';
+    }
+
+    return { ...data, certificates: certs ?? [], online_status };
+  }
+
+  async updateProfile(userId: string, dto: { full_name?: string; phone?: string; cccd?: string }) {
+    const update: Record<string, any> = {};
+    if (dto.full_name !== undefined) update.full_name = dto.full_name;
+    if (dto.phone !== undefined) update.phone = dto.phone;
+    if (dto.cccd !== undefined) update.cccd = dto.cccd;
+
+    const { data, error } = await this.supabase.db
+      .from('users')
+      .update(update)
+      .eq('id', userId)
+      .select('id, email, full_name, phone, avatar_url, cccd')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async uploadCertificate(userId: string, file: Express.Multer.File, name: string) {
+    const ext = file.originalname.split('.').pop() ?? 'jpg';
+    const path = `${userId}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await this.supabase.db.storage
+      .from('certificates')
+      .upload(path, file.buffer, { contentType: file.mimetype, upsert: false });
+
+    if (uploadError) throw new BadRequestException(uploadError.message);
+
+    const { data: { publicUrl } } = this.supabase.db.storage
+      .from('certificates')
+      .getPublicUrl(path);
+
+    const { data, error } = await this.supabase.db
+      .from('user_certificates')
+      .insert({ user_id: userId, name, file_url: publicUrl })
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async deleteCertificate(userId: string, certId: string) {
+    const { data: cert } = await this.supabase.db
+      .from('user_certificates')
+      .select('id, file_url')
+      .eq('id', certId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!cert) throw new NotFoundException('Certificate not found');
+
+    // Extract storage path from URL
+    const url = new URL(cert.file_url);
+    const storagePath = url.pathname.split('/certificates/')[1];
+    if (storagePath) {
+      await this.supabase.db.storage.from('certificates').remove([storagePath]);
+    }
+
+    await this.supabase.db.from('user_certificates').delete().eq('id', certId);
+    return { message: 'Certificate deleted' };
+  }
+
+  async getStaffProfile(staffId: string) {
+    const { data, error } = await this.supabase.db
+      .from('users')
+      .select('id, email, full_name, phone, avatar_url, cccd')
+      .eq('id', staffId)
+      .single();
+
+    if (error || !data) throw new NotFoundException('User not found');
+
+    const { data: certs } = await this.supabase.db
+      .from('user_certificates')
+      .select('id, name, file_url, uploaded_at')
+      .eq('user_id', staffId)
+      .order('uploaded_at', { ascending: false });
+
+    return { ...data, certificates: certs ?? [] };
+  }
+
+  async updateAvatar(userId: string, file: Express.Multer.File) {
+    const ext = file.originalname.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const path = `${userId}/avatar.${ext}`;
+
+    const { error: uploadError } = await this.supabase.db.storage
+      .from('avatars')
+      .upload(path, file.buffer, { contentType: file.mimetype, upsert: true });
+
+    if (uploadError) throw new BadRequestException(uploadError.message);
+
+    const { data: { publicUrl } } = this.supabase.db.storage
+      .from('avatars')
+      .getPublicUrl(path);
+
+    // Append cache-buster so the URL changes each upload
+    const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+
+    const { data, error } = await this.supabase.db
+      .from('users')
+      .update({ avatar_url: avatarUrl })
+      .eq('id', userId)
+      .select('id, email, full_name, phone, avatar_url, cccd')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async leaveWorkspace(userId: string, tenantId: string, reason?: string) {
+    const { data: membership, error } = await this.supabase.db
+      .from('user_tenants')
+      .select('id, role')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !membership) {
+      throw new BadRequestException({ code: 'NOT_MEMBER', message: 'You are not a member of this workspace' });
+    }
+
+    await this.supabase.db
+      .from('user_tenants')
+      .delete()
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId);
+
+    // Reset approved application so auto-enter in select-tenant doesn't re-trigger
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'withdrawn' })
+      .eq('applicant_id', userId)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'approved');
+
+    await this.supabase.db.from('audit_logs').insert({
+      tenant_id: tenantId,
+      actor_id: userId,
+      action: 'member_removed',
+      metadata: { removed_user_id: userId, reason: reason ?? null, self_leave: true },
+    });
+
+    return { message: 'Left workspace successfully' };
+  }
 
   async getMyTasks(user: CurrentUser, pagination: PaginationDto, status?: string) {
     const { page = 1, limit = 20 } = pagination;

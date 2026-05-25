@@ -1,14 +1,15 @@
 import '@/global.css';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider } from '@/context/auth';
 import { useAuth } from '@/context/auth';
+import { ToastProvider } from '@/context/toast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,6 +19,22 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function TenantCacheManager() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const prevTenantRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const tenantId = user?.tenant_id ?? null;
+    if (prevTenantRef.current !== undefined && prevTenantRef.current !== tenantId) {
+      qc.clear();
+    }
+    prevTenantRef.current = tenantId;
+  }, [user?.tenant_id, qc]);
+
+  return null;
+}
 
 function RootStack() {
   const { token, user, isLoading, pendingSelection } = useAuth();
@@ -50,9 +67,12 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <TenantCacheManager />
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <AnimatedSplashOverlay />
-          <RootStack />
+          <ToastProvider>
+            <AnimatedSplashOverlay />
+            <RootStack />
+          </ToastProvider>
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

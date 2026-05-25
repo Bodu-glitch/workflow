@@ -2,6 +2,7 @@
 import { StyleSheet } from 'react-native';
 import { Pressable, Text, View } from '@/tw';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
+import { ToastProvider } from '@/context/toast';
 
 const TAB_ICONS: Record<string, { default: string; focused: string }> = {
   Dashboard: {
@@ -47,6 +48,7 @@ function WebTabButton({ children, isFocused, ...props }: TabTriggerSlotProps & {
 
 export default function BOWebLayout() {
   return (
+    <ToastProvider>
     <Tabs>
       <TabSlot style={{ flex: 1 }} />
       <TabList style={styles.tabList}>
@@ -67,6 +69,7 @@ export default function BOWebLayout() {
         </TabTrigger>
       </TabList>
     </Tabs>
+    </ToastProvider>
   );
 }
 

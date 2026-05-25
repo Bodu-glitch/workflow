@@ -20,8 +20,14 @@ export class EmailService {
       await this.resend.emails.send({
         from: this.from,
         to: email,
-        subject: 'Lời mời tham gia hệ thống',
-        html: `<p>Bạn đã được mời tham gia hệ thống.</p><p>Nhấp vào liên kết bên dưới và đăng nhập bằng Google để chấp nhận lời mời:</p><p><a href="${link}">${link}</a></p><p>Liên kết có hiệu lực trong 24 giờ.</p>`,
+        subject: 'Loi moi tham gia he thong',
+        html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>
+<p>Ban da duoc moi tham gia he thong quan ly cong viec.</p>
+<p>Nhan vao lien ket ben duoi va dang nhap bang Google de chap nhan loi moi:</p>
+<p><a href="${link}" style="display:inline-block;padding:12px 24px;background:#1E40AF;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold;">Chap nhan loi moi</a></p>
+<p>Hoac copy link: <a href="${link}">${link}</a></p>
+<p>Lien ket co hieu luc trong 24 gio.</p>
+</body></html>`,
       });
     } catch (err) {
       console.error('[EmailService] Failed to send invitation email:', err);
@@ -34,8 +40,13 @@ export class EmailService {
       await this.resend.emails.send({
         from: this.from,
         to: email,
-        subject: 'Lời mời tham gia tenant mới',
-        html: `<p>Bạn được mời tham gia một tenant mới. Click để xác nhận:</p><p><a href="${link}">${link}</a></p><p>Hoặc accept trực tiếp trong ứng dụng. Link có hiệu lực 24 giờ.</p>`,
+        subject: 'Loi moi tham gia workspace moi',
+        html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>
+<p>Ban duoc moi tham gia mot workspace moi.</p>
+<p>Nhan vao lien ket ben duoi de xac nhan:</p>
+<p><a href="${link}" style="display:inline-block;padding:12px 24px;background:#1E40AF;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold;">Chap nhan loi moi</a></p>
+<p>Hoac accept truc tiep trong ung dung. Link co hieu luc 24 gio.</p>
+</body></html>`,
       });
     } catch (err) {
       console.error('[EmailService] Failed to send invitation accept email:', err);

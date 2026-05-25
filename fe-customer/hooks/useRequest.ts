@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
+import { useAuth } from './useAuth';
 import type { ServiceRequest, CategoryMatch } from '../types';
 
 export function useRequests() {
+  const { user } = useAuth();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
+    if (!user) { setLoading(false); return; }
     setLoading(true);
     try {
       const res = await api.get<ServiceRequest[]>('/requests');
@@ -17,7 +20,7 @@ export function useRequests() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchRequests();

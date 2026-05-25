@@ -16,12 +16,20 @@ export default function StaffLayout() {
         <NativeTabs.Trigger.Label>Tasks</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="schedule" disableTransparentOnScrollEdge>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: 'calendar', selected: 'calendar.badge.clock' }}
+          md="calendar_month"
+        />
+        <NativeTabs.Trigger.Label>Lịch</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="jobs" disableTransparentOnScrollEdge>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'wrench.and.screwdriver', selected: 'wrench.and.screwdriver.fill' }}
           md="build"
         />
-        <NativeTabs.Trigger.Label>Công việc</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Dịch vụ</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="history" disableTransparentOnScrollEdge>

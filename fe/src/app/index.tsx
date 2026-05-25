@@ -12,6 +12,11 @@ export default function Index() {
 
   useEffect(() => {
     if (!token || !user) return;
+    const role = user.role;
+    if (role !== 'business_owner' && role !== 'operator' && role !== 'staff') {
+      setInviteCheckDone(true);
+      return;
+    }
     if (checkedTokenRef.current === token) return;
     checkedTokenRef.current = token;
     setInviteCheckDone(false);

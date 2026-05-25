@@ -228,9 +228,7 @@ export default function ChatScreen() {
                         borderBottomLeftRadius: isOwn ? 18 : 4,
                         paddingHorizontal: 14,
                         paddingVertical: 10,
-                        shadowColor: '#000',
-                        shadowOpacity: 0.06,
-                        shadowRadius: 4,
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
                         elevation: 2,
                       }}
                     >

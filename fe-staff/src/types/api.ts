@@ -178,6 +178,68 @@ export interface GoogleOnboardingResponse {
   tenant: TenantInfo;
 }
 
+// ─── Workspace Applications ───────────────────────────────────────────────────
+
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface WorkspaceApplication {
+  id: string;
+  status: ApplicationStatus;
+  message?: string;
+  applied_at: string;
+  reviewed_at?: string;
+  tenants: TenantInfo;
+}
+
+export interface WorkspaceSearchResult {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  industry?: string | null;
+  operating_area?: string | null;
+  benefits?: string | null;
+  income_level?: string | null;
+  policies?: string | null;
+}
+
+// ─── Work Schedule ────────────────────────────────────────────────────────────
+
+export interface WorkShift {
+  id: string;
+  tenant_id: string;
+  name: string;
+  start_time: string; // "HH:MM"
+  end_time: string;
+  color: string;
+  created_at: string;
+}
+
+export interface MyShiftAssignment {
+  id: string;
+  work_date: string;
+  note?: string;
+  work_shifts: Pick<WorkShift, 'id' | 'name' | 'start_time' | 'end_time' | 'color'>;
+}
+
+export type LeaveType = 'annual' | 'sick' | 'personal' | 'other';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected';
+
+export interface LeaveRequest {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  type: LeaveType;
+  start_date: string;
+  end_date: string;
+  reason?: string;
+  status: LeaveStatus;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  reject_reason?: string;
+  created_at: string;
+}
+
 // ─── In-app invitations (received by the logged-in user) ─────────────────────
 
 export interface InAppInvitation {

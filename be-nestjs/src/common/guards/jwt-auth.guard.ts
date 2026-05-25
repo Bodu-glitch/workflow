@@ -11,7 +11,10 @@ export class JwtAuthGuard implements CanActivate {
     if (!token) throw new UnauthorizedException();
 
     const { data: { user }, error } = await this.supabase.db.auth.getUser(token);
-    if (error || !user) throw new UnauthorizedException();
+    if (error || !user) {
+      if (error) console.error('[JwtGuard] getUser error:', error.message);
+      throw new UnauthorizedException();
+    }
 
     const { data: dbUser } = await this.supabase.db
       .from('users')
@@ -24,11 +27,6 @@ export class JwtAuthGuard implements CanActivate {
 
     if (dbUser?.role === 'superadmin') {
       req.user = { id: user.id, email: user.email, role: 'superadmin', tenant_id: null };
-      return true;
-    }
-
-    if (dbUser?.role === 'customer') {
-      req.user = { id: user.id, email: user.email, role: 'customer', tenant_id: null };
       return true;
     }
 

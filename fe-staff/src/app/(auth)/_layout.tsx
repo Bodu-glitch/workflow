@@ -2,12 +2,12 @@ import { Stack } from 'expo-router';
 import { useAuth } from '@/context/auth';
 
 export default function AuthLayout() {
-  const { pendingSelection, token, user, isLoading, needsOnboarding } = useAuth();
+  const { pendingSelection, token, user, isLoading } = useAuth();
 
   if (isLoading) return null;
 
   const isAuthenticated = !!token && !!user && !pendingSelection;
-  const canLogin = !isAuthenticated && !pendingSelection && !needsOnboarding;
+  const canLogin = !isAuthenticated && !pendingSelection;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -19,13 +19,10 @@ export default function AuthLayout() {
         <Stack.Screen name="login" />
         <Stack.Screen name="register" />
       </Stack.Protected>
-      <Stack.Protected guard={needsOnboarding}>
-        <Stack.Screen name="setup-tenant" />
-      </Stack.Protected>
       <Stack.Protected guard={!!pendingSelection}>
         <Stack.Screen name="select-tenant" />
       </Stack.Protected>
-      <Stack.Protected guard={isAuthenticated}>
+      <Stack.Protected guard={isAuthenticated || !!(pendingSelection && pendingSelection.tenants.length === 0)}>
         <Stack.Screen name="invitations" />
       </Stack.Protected>
     </Stack>
