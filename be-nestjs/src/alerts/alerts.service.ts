@@ -4,7 +4,7 @@ import { SupabaseService } from '../supabase/supabase.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 const ALERT_WINDOW_MINUTES = 30;
-const COOLDOWN_MINUTES = 60;
+const REMINDER_COOLDOWN_MINUTES = 60; // reminder: chỉ gửi 1 lần trong cửa sổ 30 phút
 
 @Injectable()
 export class AlertsService {
@@ -37,7 +37,7 @@ export class AlertsService {
     this.logger.log(`[CRON] Found ${tasks?.length ?? 0} tasks approaching deadline (window: now → +${ALERT_WINDOW_MINUTES}min)`);
     if (!tasks?.length) return;
 
-    const cooldownCutoff = new Date(now.getTime() - COOLDOWN_MINUTES * 60 * 1000).toISOString();
+    const reminderCooldownCutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MINUTES * 60 * 1000).toISOString();
 
     for (const task of tasks) {
       // Skip if a reminder was already sent for this task within the cooldown window
@@ -46,7 +46,7 @@ export class AlertsService {
         .select('id')
         .eq('task_id', task.id)
         .eq('type', 'reminder')
-        .gte('created_at', cooldownCutoff)
+        .gte('created_at', reminderCooldownCutoff)
         .limit(1);
 
       if (recent && recent.length > 0) continue;
@@ -83,7 +83,6 @@ export class AlertsService {
   @Cron('*/1 * * * *')
   async checkOverdueAlerts() {
     const now = new Date();
-    const cooldownCutoff = new Date(now.getTime() - COOLDOWN_MINUTES * 60 * 1000).toISOString();
 
     const { data: tasks, error } = await this.supabase.db
       .from('tasks')
@@ -99,15 +98,16 @@ export class AlertsService {
     if (!tasks?.length) return;
 
     for (const task of tasks) {
-      const { data: recent } = await this.supabase.db
+      // Skip nếu task đã từng nhận overdue notification (không giới hạn thời gian)
+      // → đảm bảo chỉ gửi đúng 1 lần duy nhất, dù server restart bao nhiêu lần
+      const { data: existing } = await this.supabase.db
         .from('notifications')
         .select('id')
         .eq('task_id', task.id)
         .eq('type', 'overdue')
-        .gte('created_at', cooldownCutoff)
         .limit(1);
 
-      if (recent && recent.length > 0) continue;
+      if (existing && existing.length > 0) continue;
 
       const { data: assignments } = await this.supabase.db
         .from('task_assignments')

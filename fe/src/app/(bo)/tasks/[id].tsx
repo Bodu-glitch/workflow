@@ -105,7 +105,7 @@ export default function BOTaskDetailScreen() {
       {/* Glass Header */}
       <View className="glass-effect px-5 pt-14 pb-4">
         <View className="flex-row items-center gap-3">
-          <Pressable onPress={() => router.back()} className="active:opacity-60">
+          <Pressable onPress={() => router.dismissTo('/(bo)/tasks')} className="active:opacity-60">
             <Text className="text-primary font-semibold">← Back</Text>
           </Pressable>
           <Text className="text-lg font-extrabold text-on-surface tracking-tight flex-1" numberOfLines={1}>

@@ -2,6 +2,7 @@ import { apiFetch } from './client';
 import type {
   Task,
   DashboardStats,
+  TaskChartData,
   CreateTaskInput,
   UpdateTaskInput,
   PaginatedResponse,
@@ -20,6 +21,7 @@ export interface TaskFilters {
   search?: string;
   page?: number;
   limit?: number;
+  overdue?: boolean;
 }
 
 export interface TaskFilterOptions {
@@ -37,7 +39,13 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 
 export const tasksApi = {
   dashboard: (from?: string, to?: string) =>
-    apiFetch<{ data: { summary: DashboardStats } }>(`/tasks/dashboard${buildQuery({ from, to })}`),
+    apiFetch<{ data: { summary: DashboardStats; on_task_staff: number; unassigned_staff: number; total_staff: number } }>(`/tasks/dashboard${buildQuery({ from, to })}`),
+
+  chartData: (period: 'week' | 'month' | 'year') =>
+    apiFetch<{ data: TaskChartData }>(`/tasks/chart?period=${period}`),
+
+  downloadReport: (period: 'month' | 'year', date: string, format: 'excel' | 'pdf') =>
+    apiFetch<Blob>(`/tasks/report?period=${period}&date=${date}&format=${format}`, {}, true),
 
   filterOptions: () =>
     apiFetch<{ data: TaskFilterOptions }>('/tasks/filter-options'),

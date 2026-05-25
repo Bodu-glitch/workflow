@@ -58,7 +58,7 @@ export const tenantStore = {
   remove: () => storage.remove(TENANT_KEY),
 };
 
-async function doFetch<T>(path: string, options: RequestInit, token: string | null): Promise<T> {
+async function doFetch<T>(path: string, options: RequestInit, token: string | null, blob = false): Promise<T> {
   const tenantId = await tenantStore.get();
 
   const headers: Record<string, string> = {
@@ -90,17 +90,19 @@ async function doFetch<T>(path: string, options: RequestInit, token: string | nu
     throw new ApiError(message, response.status, code);
   }
 
+  if (blob) return response.blob() as Promise<T>;
   return response.json() as Promise<T>;
 }
 
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
+  blob = false,
 ): Promise<T> {
   const token = await tokenStore.get();
 
   try {
-    return await doFetch<T>(path, options, token);
+    return await doFetch<T>(path, options, token, blob);
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
       // Attempt token refresh via Supabase
@@ -112,7 +114,7 @@ export async function apiFetch<T>(
           if (!error && data.session) {
             await tokenStore.set(data.session.access_token);
             await tokenStore.setRefresh(data.session.refresh_token);
-            return await doFetch<T>(path, options, data.session.access_token);
+            return await doFetch<T>(path, options, data.session.access_token, blob);
           }
         } catch {
           // refresh failed — fall through to throw original error

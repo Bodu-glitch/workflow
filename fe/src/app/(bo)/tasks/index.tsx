@@ -16,6 +16,7 @@ const STATUS_OPTIONS = [
   { label: 'Done', value: 'done' as TaskStatus },
   { label: 'Cancelled', value: 'cancelled' as TaskStatus },
   { label: 'Rejected', value: 'rejected' as TaskStatus },
+  { label: '⚠ Overdue', value: 'overdue' },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -69,7 +70,7 @@ function TaskCard({ task, onPress }: { task: Task; onPress: () => void }) {
 }
 
 export default function TaskManagerScreen() {
-  const params = useLocalSearchParams<{ status?: TaskStatus }>();
+  const params = useLocalSearchParams<{ status?: string }>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(params.status);
   const [priorityFilter, setPriorityFilter] = useState<string | undefined>();
   const [areaFilter, setAreaFilter] = useState<string | undefined>();
@@ -77,6 +78,8 @@ export default function TaskManagerScreen() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  const isOverdue = statusFilter === 'overdue';
 
   useEffect(() => {
     const timer = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
@@ -92,7 +95,8 @@ export default function TaskManagerScreen() {
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['tasks', statusFilter, priorityFilter, areaFilter, serviceFilter, debouncedSearch, page],
     queryFn: () => tasksApi.list({
-      status: statusFilter as TaskStatus | undefined,
+      status: isOverdue ? undefined : statusFilter as TaskStatus | undefined,
+      overdue: isOverdue ? true : undefined,
       priority: priorityFilter as any,
       area: areaFilter,
       service_type: serviceFilter,
