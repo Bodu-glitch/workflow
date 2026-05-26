@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Alert, ActivityIndicator, RefreshControl, Image as RNImage } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -115,7 +115,7 @@ export default function StaffTaskDetailScreen() {
       setNotes('');
       setPhotoUri(null);
       setCollectedAmount('');
-      Alert.alert('Hoàn thành', 'Đã check-out thành công! Công việc hoàn thành.');
+      Alert.alert('Done', 'Checked out successfully! Task complete.');
     },
     onError: (e) => {
       const msg =
@@ -245,7 +245,7 @@ export default function StaffTaskDetailScreen() {
           <Section title={canCheckin ? 'Check In' : 'Check Out'}>
             <TextInput
               className="bg-surface-container-high rounded-xl px-4 py-3 text-base text-on-surface mb-3"
-              placeholder="Ghi chú (tùy chọn)"
+              placeholder="Notes (optional)"
               placeholderTextColor="#737685"
               value={notes}
               onChangeText={setNotes}
@@ -256,7 +256,7 @@ export default function StaffTaskDetailScreen() {
             {canCheckout && (
               <TextInput
                 className="bg-surface-container-high rounded-xl px-4 py-3 text-base text-on-surface mb-3"
-                placeholder="Số tiền thu được (VNĐ)"
+                placeholder="Collected amount (VND)"
                 placeholderTextColor="#737685"
                 value={collectedAmount}
                 onChangeText={setCollectedAmount}

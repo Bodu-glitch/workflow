@@ -1,4 +1,4 @@
-// ─── Auth ────────────────────────────────────────────────────────────────────
+﻿// ─── Auth ────────────────────────────────────────────────────────────────────
 
 export type UserRole = 'superadmin' | 'business_owner' | 'operator' | 'staff';
 
@@ -31,6 +31,7 @@ export interface CheckinRecord {
   notes?: string;
   checked_in_at?: string;
   checked_out_at?: string;
+  collected_amount?: number | null;
 }
 
 export interface Task {
@@ -51,6 +52,8 @@ export interface Task {
   customer_phone?: string;
   customer_email?: string;
   customer_note?: string;
+  area?: string;
+  service_type?: string;
   created_at: string;
   assignees: TaskAssignee[];
   checkin?: CheckinRecord;
@@ -64,6 +67,13 @@ export interface DashboardStats {
   cancelled: number;
   rejected: number;
   overdue: number;
+}
+
+export interface TaskChartData {
+  labels: string[];
+  created: number[];
+  completed: number[];
+  overdue: number[];
 }
 
 export interface CreateTaskInput {
@@ -81,6 +91,8 @@ export interface CreateTaskInput {
   customer_phone?: string;
   customer_email?: string;
   customer_note?: string;
+  area?: string;
+  service_type?: string;
 }
 
 export type UpdateTaskInput = Partial<Omit<CreateTaskInput, 'assignee_ids'>>;
@@ -172,8 +184,10 @@ export interface AuditLog {
 
 export interface Notification {
   id: string;
+  type: string;
   title: string;
   body: string;
+  task_id: string | null;
   is_read: boolean;
   data: Record<string, unknown>;
   created_at: string;
@@ -263,6 +277,12 @@ export interface ServiceCategory {
   icon_url?: string;
   sort_order: number;
   is_active: boolean;
+// ─── Tenant Services ────────────────────────────────────────────────────────────
+
+export interface TenantService {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 // ─── Auth (extended) ──────────────────────────────────────────────────────────

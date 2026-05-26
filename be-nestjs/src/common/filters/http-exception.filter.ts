@@ -23,7 +23,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       if (typeof body === 'object' && body !== null) {
         const b = body as Record<string, unknown>;
         code = (b['code'] as string) || this.statusToCode(status);
-        message = (b['message'] as string) || exception.message;
+        const raw = b['message'];
+        message = Array.isArray(raw) ? raw[0] : ((raw as string) || exception.message);
       } else if (typeof body === 'string') {
         message = body;
         code = this.statusToCode(status);

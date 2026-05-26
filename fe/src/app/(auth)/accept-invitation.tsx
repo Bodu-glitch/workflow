@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView } from '@/tw';
@@ -13,15 +13,15 @@ export default function AcceptInvitationScreen() {
 
   async function handleAccept() {
     if (!token) {
-      Alert.alert('Lỗi', 'Liên kết lời mời không hợp lệ');
+      Alert.alert('Error', 'Invalid invitation link');
       return;
     }
     setLoading(true);
     try {
       await loginWithGoogleForInvitation(token);
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : 'Không thể xác thực với Google, vui lòng thử lại.';
-      Alert.alert('Lỗi', message);
+      const message = e instanceof ApiError ? e.message : 'Could not authenticate with Google, please try again.';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }
@@ -37,16 +37,16 @@ export default function AcceptInvitationScreen() {
           <Text className="text-on-primary text-3xl font-black">T</Text>
         </View>
         <Text className="text-2xl font-extrabold text-on-surface tracking-tight text-center">
-          Lời mời tham gia
+          Workspace Invitation
         </Text>
         <Text className="text-sm text-on-surface-variant mt-2 text-center">
-          Bạn đã được mời tham gia workspace. Đăng nhập bằng Google để chấp nhận.
+          You've been invited to join a workspace. Sign in with Google to accept.
         </Text>
       </View>
 
       {!token && (
         <Text className="text-error text-center mb-6">
-          Liên kết lời mời không hợp lệ hoặc đã hết hạn.
+          Invitation link is invalid or has expired.
         </Text>
       )}
 
@@ -60,13 +60,13 @@ export default function AcceptInvitationScreen() {
         ) : (
           <>
             <Text className="text-base font-bold" style={{ color: '#4285F4' }}>G</Text>
-            <Text className="font-semibold text-on-surface text-base">Đăng nhập với Google để chấp nhận</Text>
+            <Text className="font-semibold text-on-surface text-base">Sign in with Google to accept</Text>
           </>
         )}
       </Pressable>
 
       <Pressable onPress={() => router.replace('/(auth)/login')} className="mt-6 items-center">
-        <Text className="text-sm text-on-surface-variant">Quay lại đăng nhập</Text>
+        <Text className="text-sm text-on-surface-variant">Back to Login</Text>
       </Pressable>
     </ScrollView>
   );

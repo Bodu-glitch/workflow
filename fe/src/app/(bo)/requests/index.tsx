@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -8,11 +8,11 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 
 const STATUS_TABS = [
-  { label: 'Đặt lịch', status: 'unavailable' },
-  { label: 'Đang chờ', status: 'available' },
-  { label: 'Chờ phân công', status: 'pending_assignment' },
-  { label: 'Đã phân công', status: 'assigned,in_progress' },
-  { label: 'Hoàn thành', status: 'completed,completed_late' },
+  { label: 'Scheduled', status: 'unavailable' },
+  { label: 'Pending', status: 'available' },
+  { label: 'Pending Assignment', status: 'pending_assignment' },
+  { label: 'Assigned', status: 'assigned,in_progress' },
+  { label: 'Completed', status: 'completed,completed_late' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -28,15 +28,15 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  unavailable: 'Đặt lịch',
-  available: 'Đang chờ',
-  negotiating: 'Thương lượng',
-  pending_assignment: 'Chờ phân công',
-  assigned: 'Đã phân công',
-  in_progress: 'Đang xử lý',
-  completed: 'Hoàn thành',
-  completed_late: 'Hoàn thành (trễ)',
-  cancelled: 'Đã hủy',
+  unavailable: 'Scheduled',
+  available: 'Pending',
+  negotiating: 'Negotiating',
+  pending_assignment: 'Pending Assignment',
+  assigned: 'Assigned',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  completed_late: 'Completed (late)',
+  cancelled: 'Cancelled',
 };
 
 export default function BORequestsScreen() {
@@ -56,7 +56,7 @@ export default function BORequestsScreen() {
   return (
     <View className="flex-1 bg-surface">
       <View className="glass-effect px-5 pt-14 pb-3">
-        <Text className="text-2xl font-extrabold text-on-surface tracking-tight mb-3">Yêu cầu dịch vụ</Text>
+        <Text className="text-2xl font-extrabold text-on-surface tracking-tight mb-3">Service Requests</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
           {STATUS_TABS.map((tab, i) => (
             <Pressable
@@ -79,7 +79,7 @@ export default function BORequestsScreen() {
         {requests.length === 0 ? (
           <View className="items-center justify-center py-20 gap-3">
             <Text className="text-4xl">📭</Text>
-            <Text className="text-sm text-on-surface-variant">Không có yêu cầu nào</Text>
+            <Text className="text-sm text-on-surface-variant">No requests</Text>
           </View>
         ) : (
           requests.map((req) => {
@@ -93,7 +93,7 @@ export default function BORequestsScreen() {
               >
                 <View className="flex-row items-start justify-between mb-2">
                   <View className="flex-1 gap-1">
-                    <Text className="text-xs font-bold text-primary">{req.category?.name ?? 'Dịch vụ'}</Text>
+                    <Text className="text-xs font-bold text-primary">{req.category?.name ?? 'Service'}</Text>
                     <Text className="text-sm font-semibold text-on-surface" numberOfLines={2}>
                       {req.description}
                     </Text>
@@ -103,34 +103,34 @@ export default function BORequestsScreen() {
                       <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>{statusLabel}</Text>
                     </View>
                     {req.is_emergency && (
-                      <Text className="text-xs font-bold text-error">🚨 Khẩn cấp</Text>
+                      <Text className="text-xs font-bold text-error">🚨 Urgent</Text>
                     )}
                   </View>
                 </View>
 
                 <View className="flex-row items-center justify-between mt-1">
                   <Text className="text-xs text-on-surface-variant">
-                    👤 {req.customer?.full_name ?? 'Khách hàng'}
+                    👤 {req.customer?.full_name ?? 'Customer'}
                   </Text>
                   <Text className="text-xs text-on-surface-variant">
-                    {new Date(req.created_at).toLocaleString('vi-VN')}
+                    {new Date(req.created_at).toLocaleString('en-US')}
                   </Text>
                 </View>
 
                 {req.agreed_price != null && (
                   <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-outline/20">
-                    <Text className="text-xs text-on-surface-variant">Giá thỏa thuận</Text>
+                    <Text className="text-xs text-on-surface-variant">Agreed Price</Text>
                     <Text className="text-sm font-bold text-primary">
-                      {req.agreed_price.toLocaleString('vi-VN')}₫
+                      {req.agreed_price.toLocaleString('en-US')}₫
                     </Text>
                   </View>
                 )}
 
                 {req.collected_amount != null && (
                   <View className="flex-row items-center justify-between mt-1">
-                    <Text className="text-xs text-on-surface-variant">Đã thu</Text>
+                    <Text className="text-xs text-on-surface-variant">Collected</Text>
                     <Text className="text-sm font-bold text-success">
-                      💰 {req.collected_amount.toLocaleString('vi-VN')}₫
+                      💰 {req.collected_amount.toLocaleString('en-US')}₫
                     </Text>
                   </View>
                 )}

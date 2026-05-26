@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   BadRequestException,
   NotFoundException,
@@ -102,9 +102,13 @@ export class TasksService {
   async listTasks(user: CurrentUser, pagination: PaginationDto, filters: {
     status?: string;
     priority?: string;
+    area?: string;
+    service_type?: string;
     assignee_id?: string;
     from?: string;
     to?: string;
+    search?: string;
+    overdue?: boolean;
   }) {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
@@ -120,15 +124,41 @@ export class TasksService {
 
     if (filters.status) query = query.eq('status', filters.status);
     if (filters.priority) query = query.eq('priority', filters.priority);
+    if (filters.area) query = query.eq('area', filters.area);
+    if (filters.service_type) query = query.eq('service_type', filters.service_type);
     if (filters.from) query = query.gte('created_at', filters.from);
     if (filters.to) query = query.lte('created_at', filters.to);
+    if (filters.search) query = query.ilike('title', `%${filters.search}%`);
 
+    if (filters.overdue) {
+      // Overdue: deadline đã qua + chưa hoàn thành/huỷ/từ chối
+      query = query
+        .lt('deadline', new Date().toISOString())
+        .not('status', 'in', '("done","cancelled","rejected")');
+    }
+
+    const orderField = filters.overdue ? 'deadline' : 'created_at';
     const { data, count, error } = await query
-      .order('created_at', { ascending: false })
+      .order(orderField, { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw new BadRequestException(error.message);
     return { data: (data ?? []).map((t) => this.transformTask(t)), meta: { total: count, page, limit } };
+  }
+
+  async getFilterOptions(user: CurrentUser) {
+    const [tasksRes, servicesRes] = await Promise.all([
+      this.supabase.db.from('tasks').select('area').eq('tenant_id', user.tenant_id),
+      this.supabase.db.from('tenant_services').select('name').eq('tenant_id', user.tenant_id).order('name'),
+    ]);
+
+    if (tasksRes.error) throw new BadRequestException(tasksRes.error.message);
+    if (servicesRes.error) throw new BadRequestException(servicesRes.error.message);
+
+    const areas = [...new Set((tasksRes.data ?? []).map((t: any) => t.area).filter(Boolean))].sort() as string[];
+    const serviceTypes = (servicesRes.data ?? []).map((s: any) => s.name) as string[];
+
+    return { areas, service_types: serviceTypes };
   }
 
   async getDashboard(user: CurrentUser, from?: string, to?: string) {
@@ -164,7 +194,118 @@ export class TasksService {
       }
     }
 
-    return { summary };
+    // on_task_staff = distinct staff được gán task todo/in_progress (bất kể from/to)
+    const { data: activeTasks } = await this.supabase.db
+      .from('tasks')
+      .select('id')
+      .eq('tenant_id', user.tenant_id)
+      .in('status', ['todo', 'in_progress']);
+
+    let on_task_staff = 0;
+    const activeTaskIds = (activeTasks ?? []).map((t: any) => t.id);
+    const onTaskUserIds = new Set<string>();
+    if (activeTaskIds.length > 0) {
+      const { data: assignments } = await this.supabase.db
+        .from('task_assignments')
+        .select('user_id')
+        .in('task_id', activeTaskIds);
+      (assignments ?? []).forEach((a: any) => onTaskUserIds.add(a.user_id));
+      on_task_staff = onTaskUserIds.size;
+    }
+
+    // total_staff = tổng staff thuộc tenant (không filter is_active vì không đủ tin cậy)
+    const { data: staffList } = await this.supabase.db
+      .from('user_tenants')
+      .select('user_id')
+      .eq('tenant_id', user.tenant_id)
+      .eq('role', 'staff');
+
+    const total_staff = (staffList ?? []).length;
+    const unassigned_staff = Math.max(0, total_staff - on_task_staff);
+
+    return { summary, on_task_staff, unassigned_staff, total_staff };
+  }
+
+  async getChart(user: CurrentUser, period: 'week' | 'month' | 'year') {
+    const now = new Date();
+    // Dùng UTC nhất quán: tránh lệch ngày khi server chạy ở timezone khác UTC
+    // (VD: VN UTC+7 → local midnight = UTC hôm trước → dayStr bị lùi 1 ngày)
+    const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    let fromDate: Date;
+
+    if (period === 'week') {
+      fromDate = new Date(Date.UTC(todayUTC.getUTCFullYear(), todayUTC.getUTCMonth(), todayUTC.getUTCDate() - 6));
+    } else if (period === 'month') {
+      fromDate = new Date(Date.UTC(todayUTC.getUTCFullYear(), todayUTC.getUTCMonth(), todayUTC.getUTCDate() - 27));
+    } else {
+      // year: 12 tháng, bắt đầu từ ngày 1 của tháng cách đây 11 tháng
+      fromDate = new Date(Date.UTC(todayUTC.getUTCFullYear(), todayUTC.getUTCMonth() - 11, 1));
+    }
+
+    // Tasks được tạo trong khoảng → cho series Created + Completed
+    const { data: createdTasks } = await this.supabase.db
+      .from('tasks')
+      .select('created_at, status')
+      .eq('tenant_id', user.tenant_id)
+      .gte('created_at', fromDate.toISOString());
+
+    // Overdue: deadline đã qua (< now) + status = 'todo' (chưa bắt đầu, bỏ qua deadline)
+    // Không tính in_progress vì đang có người làm
+    const { data: overdueTasks } = await this.supabase.db
+      .from('tasks')
+      .select('deadline')
+      .eq('tenant_id', user.tenant_id)
+      .not('deadline', 'is', null)
+      .gte('deadline', fromDate.toISOString())
+      .lt('deadline', now.toISOString())
+      .eq('status', 'todo');
+
+    const labels: string[] = [];
+    const created: number[] = [];
+    const completed: number[] = [];
+    const overdue: number[] = [];
+
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    if (period === 'week') {
+      for (let i = 0; i < 7; i++) {
+        // Tính ngày bằng UTC để dayStr khớp với created_at (UTC) trong DB
+        const d = new Date(fromDate);
+        d.setUTCDate(fromDate.getUTCDate() + i);
+        const dayStr = d.toISOString().substring(0, 10); // 'YYYY-MM-DD' UTC
+
+        labels.push(DAYS[d.getUTCDay()]);
+        created.push((createdTasks ?? []).filter((t: any) => t.created_at.startsWith(dayStr)).length);
+        completed.push((createdTasks ?? []).filter((t: any) => t.created_at.startsWith(dayStr) && t.status === 'done').length);
+        overdue.push((overdueTasks ?? []).filter((t: any) => (t.deadline ?? '').startsWith(dayStr)).length);
+      }
+    } else if (period === 'month') {
+      for (let i = 0; i < 4; i++) {
+        const wStart = new Date(fromDate);
+        wStart.setUTCDate(fromDate.getUTCDate() + i * 7);
+        const wEnd = new Date(wStart);
+        wEnd.setUTCDate(wStart.getUTCDate() + 6);
+        wEnd.setUTCHours(23, 59, 59, 999);
+
+        labels.push(`W${i + 1}`);
+        created.push((createdTasks ?? []).filter((t: any) => { const d = new Date(t.created_at); return d >= wStart && d <= wEnd; }).length);
+        completed.push((createdTasks ?? []).filter((t: any) => { const d = new Date(t.created_at); return d >= wStart && d <= wEnd && t.status === 'done'; }).length);
+        overdue.push((overdueTasks ?? []).filter((t: any) => { if (!t.deadline) return false; const d = new Date(t.deadline); return d >= wStart && d <= wEnd; }).length);
+      }
+    } else {
+      for (let i = 0; i < 12; i++) {
+        const mDate = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth() + i, 1));
+        const mStr = `${mDate.getUTCFullYear()}-${String(mDate.getUTCMonth() + 1).padStart(2, '0')}`;
+
+        labels.push(MONTHS[mDate.getUTCMonth()]);
+        created.push((createdTasks ?? []).filter((t: any) => t.created_at.startsWith(mStr)).length);
+        completed.push((createdTasks ?? []).filter((t: any) => t.created_at.startsWith(mStr) && t.status === 'done').length);
+        overdue.push((overdueTasks ?? []).filter((t: any) => (t.deadline ?? '').startsWith(mStr)).length);
+      }
+    }
+
+    return { labels, created, completed, overdue };
   }
 
   async getTask(id: string, user: CurrentUser) {
@@ -299,7 +440,7 @@ export class TasksService {
     return data;
   }
 
-  async rejectTask(id: string, reason: string | undefined, user: CurrentUser) {
+  async rejectTask(id: string, reason: string, user: CurrentUser) {
     const task = await this.getTask(id, user);
 
     if (['done', 'cancelled'].includes(task.status)) {

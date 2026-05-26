@@ -61,4 +61,12 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   customer_note?: string;
+
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  service_type?: string;
 }

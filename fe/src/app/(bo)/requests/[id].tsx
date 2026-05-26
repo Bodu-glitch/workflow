@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,14 +10,14 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { ApiError } from '@/lib/api/client';
 
 const STATUS_LABELS: Record<string, string> = {
-  available: 'Đang chờ',
-  negotiating: 'Thương lượng',
-  pending_assignment: 'Chờ phân công',
-  assigned: 'Đã phân công',
-  in_progress: 'Đang xử lý',
-  completed: 'Hoàn thành',
-  completed_late: 'Hoàn thành (trễ)',
-  cancelled: 'Đã hủy',
+  available: 'Pending',
+  negotiating: 'Negotiating',
+  pending_assignment: 'Pending Assignment',
+  assigned: 'Assigned',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  completed_late: 'Completed (late)',
+  cancelled: 'Cancelled',
 };
 
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
@@ -66,19 +66,19 @@ export default function BORequestDetailScreen() {
   const pushToPoolMutation = useMutation({
     mutationFn: () => requestsApi.pushToPool(id),
     onSuccess: invalidate,
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
   const assignMutation = useMutation({
     mutationFn: (staffId: string) => requestsApi.assign(id, staffId),
     onSuccess: () => { invalidate(); setShowStaffList(false); setSelectedStaffId(null); },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Phân công thất bại'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Assignment failed'),
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => requestsApi.cancel(id, 'Operator hủy'),
+    mutationFn: () => requestsApi.cancel(id, 'Cancelled by operator'),
     onSuccess: () => { invalidate(); router.back(); },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
   if (isLoading) return <LoadingScreen />;
@@ -96,9 +96,9 @@ export default function BORequestDetailScreen() {
       <View className="glass-effect px-5 pt-14 pb-4">
         <View className="flex-row items-center gap-3">
           <Pressable onPress={() => router.back()} className="active:opacity-60">
-            <Text className="text-primary font-semibold">← Quay lại</Text>
+            <Text className="text-primary font-semibold">← Back</Text>
           </Pressable>
-          <Text className="text-lg font-extrabold text-on-surface flex-1" numberOfLines={1}>Chi tiết yêu cầu</Text>
+          <Text className="text-lg font-extrabold text-on-surface flex-1" numberOfLines={1}>Request Details</Text>
           <View className="bg-primary/10 px-3 py-1 rounded-full">
             <Text className="text-xs font-bold text-primary">{statusLabel}</Text>
           </View>
@@ -109,43 +109,43 @@ export default function BORequestDetailScreen() {
         className="flex-1 px-4 pt-4"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
       >
-        <Section title="Thông tin yêu cầu">
-          <InfoRow label="Dịch vụ" value={req.category?.name} />
-          <InfoRow label="Mô tả" value={req.description} />
-          <InfoRow label="Ưu tiên" value={req.is_emergency ? '🚨 Khẩn cấp' : 'Bình thường'} />
-          <InfoRow label="Thời gian" value={new Date(req.created_at).toLocaleString('vi-VN')} />
+        <Section title="Request Info">
+          <InfoRow label="Service" value={req.category?.name} />
+          <InfoRow label="Description" value={req.description} />
+          <InfoRow label="Priority" value={req.is_emergency ? '🚨 Urgent' : 'Normal'} />
+          <InfoRow label="Date" value={new Date(req.created_at).toLocaleString('en-US')} />
         </Section>
 
-        <Section title="Khách hàng">
-          <InfoRow label="Họ tên" value={req.customer?.full_name} />
-          <InfoRow label="Điện thoại" value={req.customer?.phone} />
+        <Section title="Customer">
+          <InfoRow label="Full Name" value={req.customer?.full_name} />
+          <InfoRow label="Phone" value={req.customer?.phone} />
         </Section>
 
         {req.tenant && (
-          <Section title="Doanh nghiệp được chọn">
-            <InfoRow label="Tên" value={req.tenant.name} />
+          <Section title="Assigned Business">
+            <InfoRow label="Name" value={req.tenant.name} />
           </Section>
         )}
 
         {req.staff && (
-          <Section title="Kỹ thuật viên">
-            <InfoRow label="Tên" value={req.staff.full_name} />
+          <Section title="Technician">
+            <InfoRow label="Name" value={req.staff.full_name} />
           </Section>
         )}
 
-        <Section title="Tài chính">
-          <InfoRow label="Giá thỏa thuận" value={req.agreed_price != null ? `${req.agreed_price.toLocaleString('vi-VN')}₫` : undefined} />
+        <Section title="Financials">
+          <InfoRow label="Agreed Price" value={req.agreed_price != null ? `${req.agreed_price.toLocaleString('en-US')}₫` : undefined} />
           {req.collected_amount != null && (
             <View className="bg-success/10 rounded-xl px-3 py-2">
               <Text className="text-sm font-bold text-success">
-                💰 Đã thu: {req.collected_amount.toLocaleString('vi-VN')}₫
+                💰 Collected: {req.collected_amount.toLocaleString('en-US')}₫
               </Text>
             </View>
           )}
         </Section>
 
         {!isTerminal && (
-          <Section title="Thao tác">
+          <Section title="Actions">
             {canPushToPool && (
               <Pressable
                 onPress={() => pushToPoolMutation.mutate()}
@@ -154,7 +154,7 @@ export default function BORequestDetailScreen() {
               >
                 {pushToPoolMutation.isPending
                   ? <ActivityIndicator size="small" />
-                  : <Text className="text-sm font-bold text-on-surface">📤 Đưa vào pool nhân viên</Text>
+                  : <Text className="text-sm font-bold text-on-surface">📤 Push to Staff Pool</Text>
                 }
               </Pressable>
             )}
@@ -165,7 +165,7 @@ export default function BORequestDetailScreen() {
                 className="py-3 rounded-xl items-center mb-3 active:opacity-70"
                 style={{ backgroundColor: '#1E40AF' }}
               >
-                <Text className="text-sm font-bold text-white">👤 Phân công nhân viên</Text>
+                <Text className="text-sm font-bold text-white">👤 Assign Staff</Text>
               </Pressable>
             )}
 
@@ -174,7 +174,7 @@ export default function BORequestDetailScreen() {
                 {!staffData ? (
                   <ActivityIndicator size="small" />
                 ) : staffData.length === 0 ? (
-                  <Text className="text-sm text-on-surface-variant text-center">Không có nhân viên</Text>
+                  <Text className="text-sm text-on-surface-variant text-center">No staff available</Text>
                 ) : (
                   staffData.map((s: any) => (
                     <Pressable
@@ -198,7 +198,7 @@ export default function BORequestDetailScreen() {
                   >
                     {assignMutation.isPending
                       ? <ActivityIndicator color="#fff" size="small" />
-                      : <Text className="text-sm font-bold text-white">Xác nhận phân công</Text>
+                      : <Text className="text-sm font-bold text-white">Confirm Assignment</Text>
                     }
                   </Pressable>
                 )}
@@ -207,16 +207,16 @@ export default function BORequestDetailScreen() {
 
             {canCancel && (
               <Pressable
-                onPress={() => Alert.alert('Hủy yêu cầu', 'Bạn có chắc muốn hủy?', [
-                  { text: 'Không', style: 'cancel' },
-                  { text: 'Hủy', style: 'destructive', onPress: () => cancelMutation.mutate() },
+                onPress={() => Alert.alert('Cancel Request', 'Are you sure you want to cancel?', [
+                  { text: 'No', style: 'cancel' },
+                  { text: 'Cancel', style: 'destructive', onPress: () => cancelMutation.mutate() },
                 ])}
                 disabled={cancelMutation.isPending}
                 className="py-3 rounded-xl bg-error-container items-center active:opacity-70 disabled:opacity-50"
               >
                 {cancelMutation.isPending
                   ? <ActivityIndicator size="small" />
-                  : <Text className="text-sm font-bold text-on-error-container">Hủy yêu cầu</Text>
+                  : <Text className="text-sm font-bold text-on-error-container">Cancel Request</Text>
                 }
               </Pressable>
             )}

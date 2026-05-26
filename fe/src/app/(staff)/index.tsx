@@ -4,6 +4,7 @@ import { FlatList, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { meApi } from '@/lib/api/me';
+import { NotifBell } from '@/components/NotifBell';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
@@ -86,9 +87,7 @@ export default function MyTaskListScreen() {
             </Text>
           </View>
           <View className="flex-row gap-3 items-center">
-            <Pressable onPress={() => router.push('/notifications')} className="active:opacity-60">
-              <Text className="text-2xl">🔔</Text>
-            </Pressable>
+            <NotifBell />
             <Pressable onPress={() => router.push('/(staff)/history')} className="active:opacity-60">
               <View className="px-3 py-1.5 rounded-full bg-surface-container-high">
                 <Text className="text-xs font-bold text-primary">History</Text>

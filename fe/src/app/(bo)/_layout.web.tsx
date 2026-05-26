@@ -1,4 +1,4 @@
-import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
+﻿import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import { StyleSheet } from 'react-native';
 import { Pressable, Text, View } from '@/tw';
 import type { TabTriggerSlotProps } from 'expo-router/ui';

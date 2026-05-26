@@ -2,6 +2,7 @@ import { apiFetch } from './client';
 import type {
   Task,
   DashboardStats,
+  TaskChartData,
   CreateTaskInput,
   UpdateTaskInput,
   PaginatedResponse,
@@ -12,11 +13,20 @@ import type {
 export interface TaskFilters {
   status?: TaskStatus;
   priority?: TaskPriority;
+  area?: string;
+  service_type?: string;
   assignee_id?: string;
   from?: string;
   to?: string;
+  search?: string;
   page?: number;
   limit?: number;
+  overdue?: boolean;
+}
+
+export interface TaskFilterOptions {
+  areas: string[];
+  service_types: string[];
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -29,7 +39,16 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 
 export const tasksApi = {
   dashboard: (from?: string, to?: string) =>
-    apiFetch<{ data: { summary: DashboardStats } }>(`/tasks/dashboard${buildQuery({ from, to })}`),
+    apiFetch<{ data: { summary: DashboardStats; on_task_staff: number; unassigned_staff: number; total_staff: number } }>(`/tasks/dashboard${buildQuery({ from, to })}`),
+
+  chartData: (period: 'week' | 'month' | 'year') =>
+    apiFetch<{ data: TaskChartData }>(`/tasks/chart?period=${period}`),
+
+  downloadReport: (period: 'month' | 'year', date: string, format: 'excel' | 'pdf') =>
+    apiFetch<Blob>(`/tasks/report?period=${period}&date=${date}&format=${format}`, {}, true),
+
+  filterOptions: () =>
+    apiFetch<{ data: TaskFilterOptions }>('/tasks/filter-options'),
 
   list: (filters: TaskFilters = {}) =>
     apiFetch<PaginatedResponse<Task>>(`/tasks${buildQuery(filters as Record<string, string | number | undefined>)}`),

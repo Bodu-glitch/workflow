@@ -78,6 +78,7 @@ export function StaffPickerModal({ visible, selected, onConfirm, onClose }: Staf
               placeholderTextColor="#737685"
               value={search}
               onChangeText={setSearch}
+              style={{ outlineStyle: 'none' } as any}
             />
           </View>
         </View>

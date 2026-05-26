@@ -14,10 +14,10 @@ export default function RegisterScreen() {
           <Text className="text-on-primary text-3xl font-black">T</Text>
         </View>
         <Text className="text-2xl font-extrabold text-on-surface tracking-tight text-center">
-          Đăng ký tài khoản
+          Create Account
         </Text>
         <Text className="text-sm text-on-surface-variant mt-3 text-center leading-5">
-          Tài khoản được tạo thông qua lời mời từ workspace. Vui lòng kiểm tra email để nhận lời mời.
+          Accounts are created via workspace invitations. Please check your email for an invitation.
         </Text>
       </View>
 
@@ -25,7 +25,7 @@ export default function RegisterScreen() {
         onPress={() => router.replace('/(auth)/login')}
         className="w-full h-14 bg-surface-container-high rounded-xl items-center justify-center active:opacity-80"
       >
-        <Text className="font-semibold text-on-surface text-base">Quay lại đăng nhập</Text>
+        <Text className="font-semibold text-on-surface text-base">Back to Login</Text>
       </Pressable>
     </ScrollView>
   );

@@ -1,13 +1,15 @@
+import React from "react";
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
+import { NotifBell } from './NotifBell';
 
 interface AppHeaderProps {
   tenantName: string;
-  unreadCount?: number;
+  rightAction?: React.ReactNode;
 }
 
-export function AppHeader({ tenantName, unreadCount = 0 }: AppHeaderProps) {
+export function AppHeader({ tenantName, rightAction }: AppHeaderProps) {
   const initials = tenantName
     .split(' ')
     .slice(0, 2)
@@ -31,6 +33,7 @@ export function AppHeader({ tenantName, unreadCount = 0 }: AppHeaderProps) {
       </Pressable>
 
       <View className="flex-row items-center gap-1">
+        {rightAction}
         <Pressable
           onPress={() => router.push('/chat')}
           className="w-10 h-10 items-center justify-center active:opacity-60"
@@ -38,22 +41,7 @@ export function AppHeader({ tenantName, unreadCount = 0 }: AppHeaderProps) {
           <Text className="text-xl">💬</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => router.push('/notifications')}
-          className="w-10 h-10 items-center justify-center active:opacity-60"
-        >
-          <Text className="text-xl">🔔</Text>
-          {unreadCount > 0 && (
-            <View
-              className="absolute top-1 right-1 w-4 h-4 rounded-full items-center justify-center"
-              style={{ backgroundColor: '#ba1a1a' }}
-            >
-              <Text className="text-white font-bold" style={{ fontSize: 9 }}>
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </Text>
-            </View>
-          )}
-        </Pressable>
+        <NotifBell />
       </View>
     </View>
   );

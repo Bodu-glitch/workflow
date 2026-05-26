@@ -1,7 +1,7 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty } from 'class-validator';
 
 export class CancelTaskDto {
-  @IsOptional()
+  @IsNotEmpty({ message: 'Cancel reason is required' })
   @IsString()
-  cancel_reason?: string;
+  cancel_reason!: string;
 }

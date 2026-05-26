@@ -1,8 +1,6 @@
-// OT Task Detail — same as BO but navigates within (ot) routes
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
@@ -35,26 +33,8 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 export default function OTTaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
-  const navigation = useNavigation();
   const [reason, setReason] = useState('');
-
-  // Khi user switch sang tab khác → tự back về task list
-  // Dùng flag `backing` để tránh state listener fire 2 lần gây lỗi GO_BACK
-  useEffect(() => {
-    const parent = navigation.getParent();
-    if (!parent) return;
-    let backing = false;
-    const unsubscribe = parent.addListener('state', () => {
-      if (backing) return;
-      const state = parent.getState();
-      const activeRouteName = state?.routes[state.index]?.name;
-      if (activeRouteName !== 'tasks') {
-        backing = true;
-        router.back();
-      }
-    });
-    return unsubscribe;
-  }, [navigation]);
+  const [reasonError, setReasonError] = useState('');
   const [showCancelInput, setShowCancelInput] = useState(false);
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [showStaffPicker, setShowStaffPicker] = useState(false);
@@ -79,14 +59,14 @@ export default function OTTaskDetailScreen() {
 
   const cancelMutation = useMutation({
     mutationFn: () => tasksApi.cancel(id, reason),
-    onSuccess: () => { invalidate(); setShowCancelInput(false); setReason(''); },
-    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to cancel'),
+    onSuccess: () => { invalidate(); setShowCancelInput(false); setReason(''); setReasonError(''); },
+    onError: (e) => setReasonError(e instanceof ApiError ? e.message : 'Failed to cancel'),
   });
 
   const rejectMutation = useMutation({
     mutationFn: () => tasksApi.reject(id, reason),
-    onSuccess: () => { invalidate(); setShowRejectInput(false); setReason(''); },
-    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to reject'),
+    onSuccess: () => { invalidate(); setShowRejectInput(false); setReason(''); setReasonError(''); },
+    onError: (e) => setReasonError(e instanceof ApiError ? e.message : 'Failed to reject'),
   });
 
   const unassignMutation = useMutation({
@@ -122,7 +102,7 @@ export default function OTTaskDetailScreen() {
       {/* Glass Header */}
       <View className="glass-effect px-5 pt-14 pb-4">
         <View className="flex-row items-center gap-3">
-          <Pressable onPress={() => router.back()} className="active:opacity-60">
+          <Pressable onPress={() => router.dismissTo('/(ot)/tasks')} className="active:opacity-60">
             <Text className="text-primary font-semibold">← Back</Text>
           </Pressable>
           <Text className="text-lg font-extrabold text-on-surface tracking-tight flex-1" numberOfLines={1}>
@@ -166,8 +146,19 @@ export default function OTTaskDetailScreen() {
           )}
           <InfoRow label="Scheduled" value={task.scheduled_at ? new Date(task.scheduled_at).toLocaleString('vi-VN') : undefined} />
           <InfoRow label="Deadline" value={task.deadline ? new Date(task.deadline).toLocaleString('vi-VN') : undefined} />
+          <InfoRow label="Service" value={task.service_type} />
           <InfoRow label="Created" value={new Date(task.created_at).toLocaleString('vi-VN')} />
         </Section>
+
+        {/* Customer Info */}
+        {(task.customer_name || task.customer_phone || task.customer_email || task.customer_note) && (
+          <Section title="Customer Info">
+            <InfoRow label="Name" value={task.customer_name} />
+            <InfoRow label="Phone" value={task.customer_phone} />
+            <InfoRow label="Email" value={task.customer_email} />
+            <InfoRow label="Note" value={task.customer_note} />
+          </Section>
+        )}
 
         {(task.checkin || task.checkout) && (
           <Section title="Check-in / Check-out">
@@ -194,7 +185,7 @@ export default function OTTaskDetailScreen() {
                 {task.checkout.collected_amount != null && (
                   <View className="bg-success/10 rounded-xl px-3 py-2 mt-1">
                     <Text className="text-xs font-bold text-success">
-                      💰 Đã thu: {Number(task.checkout.collected_amount).toLocaleString('vi-VN')}₫
+                      💰 Collected: {Number(task.checkout.collected_amount).toLocaleString('en-US')}₫
                     </Text>
                   </View>
                 )}
@@ -239,12 +230,13 @@ export default function OTTaskDetailScreen() {
           <Section title="Actions">
             {showCancelInput ? (
               <View className="gap-3 mb-3">
-                <TextInput className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface" placeholder="Cancel reason (optional)" placeholderTextColor="#737685" value={reason} onChangeText={setReason} />
+                <TextInput className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface" placeholder="Cancel reason (required)" placeholderTextColor="#737685" value={reason} onChangeText={(t) => { setReason(t); setReasonError(''); }} />
+                {reasonError ? <Text className="text-xs text-error px-1">{reasonError}</Text> : null}
                 <View className="flex-row gap-3">
-                  <Pressable onPress={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} className="flex-1 bg-surface-container-high rounded-xl py-3 items-center active:opacity-70">
+                  <Pressable onPress={() => { if (!reason.trim()) { setReasonError('Cancel reason is required'); return; } cancelMutation.mutate(); }} disabled={cancelMutation.isPending} className="flex-1 bg-surface-container-high rounded-xl py-3 items-center active:opacity-70">
                     {cancelMutation.isPending ? <ActivityIndicator size="small" /> : <Text className="text-sm font-bold text-on-surface">Confirm Cancel</Text>}
                   </Pressable>
-                  <Pressable onPress={() => { setShowCancelInput(false); setReason(''); }} className="px-4 py-3 rounded-xl bg-surface-container items-center active:opacity-70">
+                  <Pressable onPress={() => { setShowCancelInput(false); setReason(''); setReasonError(''); }} className="px-4 py-3 rounded-xl bg-surface-container items-center active:opacity-70">
                     <Text className="text-sm text-on-surface-variant">Dismiss</Text>
                   </Pressable>
                 </View>
@@ -257,12 +249,13 @@ export default function OTTaskDetailScreen() {
 
             {showRejectInput ? (
               <View className="gap-3">
-                <TextInput className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface" placeholder="Reject reason (optional)" placeholderTextColor="#737685" value={reason} onChangeText={setReason} />
+                <TextInput className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface" placeholder="Reject reason (required)" placeholderTextColor="#737685" value={reason} onChangeText={(t) => { setReason(t); setReasonError(''); }} />
+                {reasonError ? <Text className="text-xs text-error px-1">{reasonError}</Text> : null}
                 <View className="flex-row gap-3">
-                  <Pressable onPress={() => rejectMutation.mutate()} disabled={rejectMutation.isPending} className="flex-1 bg-error rounded-xl py-3 items-center active:opacity-70">
+                  <Pressable onPress={() => { if (!reason.trim()) { setReasonError('Reject reason is required'); return; } rejectMutation.mutate(); }} disabled={rejectMutation.isPending} className="flex-1 bg-error rounded-xl py-3 items-center active:opacity-70">
                     {rejectMutation.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text className="text-sm font-bold text-on-error">Confirm Reject</Text>}
                   </Pressable>
-                  <Pressable onPress={() => { setShowRejectInput(false); setReason(''); }} className="px-4 py-3 rounded-xl bg-surface-container items-center active:opacity-70">
+                  <Pressable onPress={() => { setShowRejectInput(false); setReason(''); setReasonError(''); }} className="px-4 py-3 rounded-xl bg-surface-container items-center active:opacity-70">
                     <Text className="text-sm text-on-surface-variant">Dismiss</Text>
                   </Pressable>
                 </View>

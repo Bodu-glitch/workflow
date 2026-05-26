@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -18,7 +18,7 @@ function TaskCard({ task, route }: { task: Task; route: '/(bo)/tasks/[id]' | '/(
 
   return (
     <Pressable
-      onPress={() => router.push({ pathname: route, params: { id: task.id } })}
+      onPress={() => router.navigate({ pathname: route, params: { id: task.id } })}
       className="bg-surface-container-lowest rounded-xl p-5 mb-3 overflow-hidden active:opacity-70"
     >
       <View className={`absolute left-0 top-0 bottom-0 w-1 ${isOverdue ? 'bg-warning' : 'bg-error'}`} />
