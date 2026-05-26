@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(Start-Sleep -Seconds 15)",
+      "Bash(Get-Content \"C:\\\\Users\\\\vuhuy\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--workflow-be-nestjs\\\\b128bf03-c1fe-4fe5-a2d4-417c11c5c425\\\\tasks\\\\bk3961npx.output\")"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
+}

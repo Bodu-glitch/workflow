@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 export const TOKEN_KEY = 'auth_token';
 export const REFRESH_TOKEN_KEY = 'auth_refresh_token';
 export const TENANT_KEY = 'auth_tenant_id';
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
 
 export class ApiError extends Error {
   constructor(

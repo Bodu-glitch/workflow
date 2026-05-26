@@ -12,6 +12,7 @@ import { EmailService } from '../email/email.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { InviteStaffDto } from './dto/invite-staff.dto.js';
 import { AcceptInvitationGoogleDto } from './dto/accept-invitation-google.dto.js';
+import { ApplyToWorkspaceDto } from './dto/apply-to-workspace.dto.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 
 @Injectable()
@@ -32,7 +33,7 @@ export class StaffService {
       .single();
 
     if (existingMembership) {
-      throw new ConflictException({ code: 'EMAIL_ALREADY_EXISTS', message: 'User with this email already exists in this tenant' });
+      throw new ConflictException({ code: 'ALREADY_IN_WORKSPACE', message: 'Email này đã là thành viên trong workspace này rồi' });
     }
 
     // Cancel any pending invitations for this email in this tenant
@@ -49,6 +50,23 @@ export class StaffService {
       .select('id')
       .eq('email', dto.email)
       .single();
+
+    // Check if user is already a member of any other workspace
+    let inOtherWorkspace = false;
+    if (existingUser) {
+      const { data: otherMembership } = await this.supabase.db
+        .from('user_tenants')
+        .select('tenant_id')
+        .eq('user_id', existingUser.id)
+        .neq('tenant_id', invitedBy.tenant_id)
+        .limit(1)
+        .single();
+      inOtherWorkspace = !!otherMembership;
+    }
+
+    if (inOtherWorkspace) {
+      throw new ConflictException({ code: 'USER_IN_OTHER_WORKSPACE', message: 'Người dùng này đang là thành viên của một workspace khác và không thể được mời' });
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -90,7 +108,7 @@ export class StaffService {
 
       void this.emailService.sendInvitationAcceptEmail(dto.email, token);
 
-      return { message: 'Invitation sent via push and email', invitation_id: data.id };
+      return { message: 'Invitation sent via push and email', invitation_id: data.id, in_other_workspace: inOtherWorkspace };
     }
 
     // Email invitation (new user)
@@ -119,7 +137,7 @@ export class StaffService {
 
     await this.emailService.sendInvitationEmail(dto.email, token);
 
-    return { message: 'Invitation sent', invitation_id: data.id, token };
+    return { message: 'Invitation sent', invitation_id: data.id, token, in_other_workspace: inOtherWorkspace };
   }
 
   async acceptInvitationGoogle(dto: AcceptInvitationGoogleDto) {
@@ -160,16 +178,15 @@ export class StaffService {
         { onConflict: 'id' },
       );
 
-    // Add to tenant (ignore duplicate)
-    const { error: memberError } = await this.supabase.db.from('user_tenants').insert({
+    // Upsert to tenant — re-activates if previously removed
+    const { error: memberError } = await this.supabase.db.from('user_tenants').upsert({
       user_id: googleUser.id,
       tenant_id: invitation.tenant_id,
       role: invitation.role,
-    });
+      is_active: true,
+    }, { onConflict: 'user_id,tenant_id' });
 
-    if (memberError && !memberError.message.includes('duplicate')) {
-      throw new BadRequestException(memberError.message);
-    }
+    if (memberError) throw new BadRequestException(memberError.message);
 
     await this.supabase.db.from('invitations').update({ status: 'accepted' }).eq('id', invitation.id);
 
@@ -203,11 +220,13 @@ export class StaffService {
     const { data, count, error } = await this.supabase.db
       .from('user_tenants')
       .select(
-        'role, is_active, created_at, users!inner(id, email, full_name, phone, avatar_url, last_login_at)',
+        'role, is_active, online_status, lock_reason, created_at, users!inner(id, email, full_name, phone, avatar_url, last_login_at)',
         { count: 'exact' },
       )
       .eq('tenant_id', tenantId)
       .in('role', ['staff', 'operator'])
+      // NOTE: no is_active filter — return ALL staff including locked ones
+      .order('is_active', { ascending: false })   // active first
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -222,10 +241,92 @@ export class StaffService {
       last_login_at: row.users.last_login_at,
       role: row.role,
       is_active: row.is_active,
+      online_status: row.online_status ?? 'offline',
+      lock_reason: row.lock_reason ?? null,
       created_at: row.created_at,
     }));
 
     return { data: normalized, meta: { total: count, page, limit } };
+  }
+
+  /** PATCH /staff/:id/lock — BO only: deactivate a staff member */
+  async lockStaff(staffId: string, tenantId: string, reason?: string) {
+    const { data, error } = await this.supabase.db
+      .from('user_tenants')
+      .update({
+        is_active: false,
+        online_status: 'offline',
+        lock_reason: reason ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', staffId)
+      .eq('tenant_id', tenantId)
+      .in('role', ['staff', 'operator'])
+      .select('user_id, is_active, online_status, lock_reason')
+      .single();
+
+    if (error || !data) throw new NotFoundException({ code: 'STAFF_NOT_FOUND', message: 'Không tìm thấy nhân viên trong workspace này' });
+    return data;
+  }
+
+  /** PATCH /staff/:id/unlock — BO only: reactivate a staff member */
+  async unlockStaff(staffId: string, tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('user_tenants')
+      .update({ is_active: true, lock_reason: null, updated_at: new Date().toISOString() })
+      .eq('user_id', staffId)
+      .eq('tenant_id', tenantId)
+      .in('role', ['staff', 'operator'])
+      .select('user_id, is_active, online_status')
+      .single();
+
+    if (error || !data) throw new NotFoundException({ code: 'STAFF_NOT_FOUND', message: 'Không tìm thấy nhân viên trong workspace này' });
+    return data;
+  }
+
+  // ── Violation Notes ──────────────────────────────────────────────────────
+
+  async listViolationNotes(staffId: string, tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('staff_violation_notes')
+      .select('*, users!created_by(id, full_name)')
+      .eq('user_id', staffId)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async addViolationNote(staffId: string, tenantId: string, createdBy: string, content: string) {
+    const { data, error } = await this.supabase.db
+      .from('staff_violation_notes')
+      .insert({ user_id: staffId, tenant_id: tenantId, created_by: createdBy, content })
+      .select('*, users!created_by(id, full_name)')
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async deleteViolationNote(noteId: string, tenantId: string) {
+    const { error } = await this.supabase.db
+      .from('staff_violation_notes')
+      .delete()
+      .eq('id', noteId)
+      .eq('tenant_id', tenantId);
+    if (error) throw new BadRequestException(error.message);
+    return { success: true };
+  }
+
+  /** PATCH /staff/me/online-status — staff updates own presence */
+  async updateOnlineStatus(userId: string, tenantId: string, status: 'online' | 'offline' | 'working') {
+    const { error } = await this.supabase.db
+      .from('user_tenants')
+      .update({ online_status: status })
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId);
+
+    if (error) throw new BadRequestException(error.message);
+    return { status };
   }
 
   async listInvitations(tenantId: string, pagination: PaginationDto) {
@@ -306,7 +407,7 @@ export class StaffService {
 
     await this.supabase.db
       .from('user_tenants')
-      .update({ is_active: false })
+      .delete()
       .eq('user_id', staffId)
       .eq('tenant_id', currentUser.tenant_id);
 
@@ -350,18 +451,17 @@ export class StaffService {
       throw new BadRequestException({ code: 'TOKEN_EXPIRED', message: 'Invitation has expired' });
     }
 
-    // Add to tenant
+    // Upsert to tenant — re-activates if previously removed
     const { error: memberError } = await this.supabase.db
       .from('user_tenants')
-      .insert({
+      .upsert({
         user_id: currentUser.id,
         tenant_id: invitation.tenant_id,
         role: invitation.role,
-      });
+        is_active: true,
+      }, { onConflict: 'user_id,tenant_id' });
 
-    if (memberError && !memberError.message.includes('duplicate')) {
-      throw new BadRequestException(memberError.message);
-    }
+    if (memberError) throw new BadRequestException(memberError.message);
 
     await this.supabase.db
       .from('invitations')
@@ -426,5 +526,209 @@ export class StaffService {
       .eq('id', invitationId);
 
     return { message: 'Invitation declined' };
+  }
+
+  async searchWorkspaces(
+    query: string,
+    filters: { industry?: string; area?: string; benefits?: string } = {},
+  ) {
+    const q = (query ?? '').trim();
+
+    let builder = this.supabase.db
+      .from('tenants')
+      .select('id, name, slug, description, industry, operating_area, benefits, income_level, policies')
+      .eq('status', 'active')
+      .order('name')
+      .limit(50);
+
+    if (q.length >= 2) {
+      builder = builder.or(`slug.ilike.%${q}%,name.ilike.%${q}%`);
+    }
+    if (filters.industry) {
+      builder = builder.ilike('industry', `%${filters.industry}%`);
+    }
+    if (filters.area) {
+      builder = builder.ilike('operating_area', `%${filters.area}%`);
+    }
+    if (filters.benefits) {
+      builder = builder.ilike('benefits', `%${filters.benefits}%`);
+    }
+
+    const { data } = await builder;
+    return data ?? [];
+  }
+
+  async applyToWorkspace(currentUser: { id: string }, dto: ApplyToWorkspaceDto) {
+    const { data: tenant } = await this.supabase.db
+      .from('tenants')
+      .select('id, name, slug')
+      .eq('id', dto.tenant_id)
+      .eq('status', 'active')
+      .single();
+
+    if (!tenant) {
+      throw new NotFoundException({ code: 'TENANT_NOT_FOUND', message: 'Workspace not found' });
+    }
+
+    const { data: existingMembership } = await this.supabase.db
+      .from('user_tenants')
+      .select('id')
+      .eq('user_id', currentUser.id)
+      .eq('tenant_id', dto.tenant_id)
+      .eq('is_active', true)
+      .single();
+
+    if (existingMembership) {
+      throw new ConflictException({ code: 'ALREADY_MEMBER', message: 'You are already a member of this workspace' });
+    }
+
+    const { data, error } = await this.supabase.db
+      .from('workspace_applications')
+      .upsert(
+        {
+          applicant_id: currentUser.id,
+          tenant_id: dto.tenant_id,
+          message: dto.message ?? null,
+          status: 'pending',
+          applied_at: new Date().toISOString(),
+          reviewed_by: null,
+          reviewed_at: null,
+        },
+        { onConflict: 'applicant_id,tenant_id' },
+      )
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    return { message: 'Application submitted', application: { id: data.id, status: data.status, tenant } };
+  }
+
+  async myApplications(currentUser: { id: string }) {
+    const { data, error } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id, status, message, applied_at, reviewed_at, tenants(id, name, slug)')
+      .eq('applicant_id', currentUser.id)
+      .order('applied_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async withdrawApplication(applicationId: string, currentUser: { id: string }) {
+    const { data: app } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id')
+      .eq('id', applicationId)
+      .eq('applicant_id', currentUser.id)
+      .eq('status', 'pending')
+      .single();
+
+    if (!app) {
+      throw new NotFoundException({ code: 'APPLICATION_NOT_FOUND', message: 'Application not found' });
+    }
+
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'withdrawn' })
+      .eq('id', applicationId);
+
+    return { message: 'Application withdrawn' };
+  }
+
+  async listApplications(tenantId: string, pagination: PaginationDto) {
+    const { page = 1, limit = 20 } = pagination;
+    const offset = (page - 1) * limit;
+
+    const { data, count, error } = await this.supabase.db
+      .from('workspace_applications')
+      .select(
+        'id, status, message, applied_at, reviewed_at, users!applicant_id(id, email, full_name, avatar_url)',
+        { count: 'exact' },
+      )
+      .eq('tenant_id', tenantId)
+      .order('applied_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw new BadRequestException(error.message);
+
+    const normalized = (data ?? []).map((row: any) => ({
+      id: row.id,
+      status: row.status,
+      message: row.message,
+      applied_at: row.applied_at,
+      reviewed_at: row.reviewed_at,
+      applicant: row.users,
+    }));
+
+    return { data: normalized, meta: { total: count, page, limit } };
+  }
+
+  async approveApplication(applicationId: string, tenantId: string, reviewerId: string) {
+    const { data: app } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id, applicant_id')
+      .eq('id', applicationId)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending')
+      .single();
+
+    if (!app) {
+      throw new NotFoundException({ code: 'APPLICATION_NOT_FOUND', message: 'Application not found' });
+    }
+
+    const { error: memberError } = await this.supabase.db.from('user_tenants').upsert({
+      user_id: app.applicant_id,
+      tenant_id: tenantId,
+      role: 'staff',
+      is_active: true,
+    }, { onConflict: 'user_id,tenant_id' });
+
+    if (memberError) {
+      throw new BadRequestException(memberError.message);
+    }
+
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'approved', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
+      .eq('id', applicationId);
+
+    await this.supabase.db.from('audit_logs').insert({
+      tenant_id: tenantId,
+      user_id: reviewerId,
+      action: 'member_invited',
+      metadata: { applicant_id: app.applicant_id, source: 'application' },
+    });
+
+    void this.notifications.sendPushNotification({
+      user_ids: [app.applicant_id],
+      type: 'invitation_received',
+      title: 'Đơn ứng tuyển được chấp nhận',
+      body: 'Đơn ứng tuyển của bạn đã được chấp nhận. Bạn có thể vào workspace ngay bây giờ.',
+      tenant_id: tenantId,
+    });
+
+    return { message: 'Application approved' };
+  }
+
+  async rejectApplication(applicationId: string, tenantId: string, reviewerId: string) {
+    const { data: app } = await this.supabase.db
+      .from('workspace_applications')
+      .select('id, applicant_id')
+      .eq('id', applicationId)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending')
+      .single();
+
+    if (!app) {
+      throw new NotFoundException({ code: 'APPLICATION_NOT_FOUND', message: 'Application not found' });
+    }
+
+    await this.supabase.db
+      .from('workspace_applications')
+      .update({ status: 'rejected', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
+      .eq('id', applicationId);
+
+    return { message: 'Application rejected' };
   }
 }

@@ -1,4 +1,16 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npm start *)",
+      "Bash(npx expo *)",
+      "Bash(npm install *)",
+      "PowerShell(Get-Process *)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ],
   "enabledPlugins": {
     "expo@expo-plugins": false
   }

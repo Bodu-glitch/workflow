@@ -34,6 +34,7 @@ interface AuthContextValue extends AuthState {
   refreshProfile: () => Promise<void>;
   selectTenant: (userId: string, tenantId: string) => Promise<void>;
   switchTenant: () => Promise<void>;
+  leaveCurrentWorkspace: () => Promise<void>;
   role: UserRole | null;
 }
 
@@ -49,17 +50,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const processedSessionRef = useRef<string | null>(null);
+  const sessionProcessingRef = useRef(false);
 
   useEffect(() => {
+    // Fallback: if onAuthStateChange never fires (rare Supabase edge case), stop loading after 8s
+    const loadingTimeout = setTimeout(() => {
+      setState(s => s.isLoading ? { ...s, isLoading: false } : s);
+    }, 8000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      clearTimeout(loadingTimeout);
       console.log('[Auth] onAuthStateChange event:', _event, 'session:', !!session);
       if (!session) {
         processedSessionRef.current = null;
+        sessionProcessingRef.current = false;
         setState({ token: null, user: null, isLoading: false, pendingSelection: null, needsOnboarding: false });
         return;
       }
+      // TOKEN_REFRESHED: apiFetch already retried with the new token inline — only
+      // keep the stored token in sync. Never re-run the full auth flow here because
+      // it races with whatever triggered the refresh (INITIAL_SESSION, selectTenant, etc.)
+      if (_event === 'TOKEN_REFRESHED') {
+        processedSessionRef.current = session.access_token;
+        setState(s => (s.user || s.pendingSelection) ? { ...s, token: session.access_token } : s);
+        return;
+      }
+
       if (processedSessionRef.current === session.access_token) return;
+      if (sessionProcessingRef.current) {
+        processedSessionRef.current = session.access_token;
+        return;
+      }
+
       processedSessionRef.current = session.access_token;
+      sessionProcessingRef.current = true;
       try {
         await handleSupabaseSession(session);
       } catch (err) {
@@ -68,16 +92,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await tokenStore.remove();
         await tokenStore.removeRefresh();
         await tenantStore.remove();
-        await supabase.auth.signOut();
+        // signOut may throw if server unreachable — ignore and clear state anyway
+        await supabase.auth.signOut().catch(() => {});
         setState({ token: null, user: null, isLoading: false, pendingSelection: null, needsOnboarding: false });
+      } finally {
+        sessionProcessingRef.current = false;
       }
     });
-    return () => subscription.unsubscribe();
+    return () => { clearTimeout(loadingTimeout); subscription.unsubscribe(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle Android OAuth deep-link when app opens fresh after redirect
+  // On web, Supabase handles the PKCE code exchange automatically via detectSessionInUrl=true
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+
     const handleDeepLink = async (url: string) => {
       console.log('[Auth] handleDeepLink url:', url?.substring(0, 120));
       if (!url) return;
@@ -146,16 +176,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Fetch profile — tenantStore may already be set (returning user), so X-Tenant-ID is sent automatically
-    const tenantId = await tenantStore.get();
-    console.log('[Auth] tenantId from store:', tenantId);
+    // Clear stored tenant before profile fetch: sending a stale X-Tenant-ID causes the guard
+    // to return 401 if the membership was revoked.
+    const storedTenantId = await tenantStore.get();
+    console.log('[Auth] tenantId from store:', storedTenantId);
+    if (storedTenantId) await tenantStore.remove();
 
     const { data: profileData } = await authApi.profile();
+    // apiFetch may have internally refreshed the token (if session.access_token was expired).
+    // Use the current token from the store (may be newer) and mark it processed so the
+    // subsequent TOKEN_REFRESHED event doesn't race with our setState below.
+    const activeToken = Platform.OS === 'web'
+      ? (localStorage.getItem('auth_token') ?? session.access_token)
+      : await tokenStore.get() ?? session.access_token;
+    if (activeToken !== session.access_token) {
+      processedSessionRef.current = activeToken;
+    }
     const profile = profileData as any;
 
-    // New Google user — needs to create a workspace
+    // User has no workspace membership — show workspace search/apply screen
     if (profile?.requires_onboarding) {
-      setState({ token: session.access_token, user: null, isLoading: false, pendingSelection: null, needsOnboarding: true });
+      setState({ token: activeToken, user: null, isLoading: false, pendingSelection: { userId: session.user.id, tenants: [] }, needsOnboarding: false });
       return;
     }
 
@@ -164,22 +205,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('[Auth] profile fetched, role:', typedProfile.role, 'tenants:', tenants.length);
 
     if (typedProfile.role === 'superadmin') {
-      setState({ token: session.access_token, user: typedProfile, isLoading: false, pendingSelection: null, needsOnboarding: false });
+      setState({ token: activeToken, user: typedProfile, isLoading: false, pendingSelection: null, needsOnboarding: false });
       return;
     }
 
-    if (tenantId) {
-      setState({ token: session.access_token, user: typedProfile, isLoading: false, pendingSelection: null, needsOnboarding: false });
+    // fe-staff is for staff/operators only — exclude workspaces where user is business_owner
+    const staffTenants = tenants.filter(t => t.role !== 'business_owner');
+
+    if (staffTenants.length === 0) {
+      // User has no staff/operator memberships yet — show empty selection screen
+      setState((s) => ({
+        ...s,
+        token: activeToken,
+        isLoading: false,
+        needsOnboarding: false,
+        pendingSelection: { userId: typedProfile.id, tenants: [] },
+      }));
       return;
     }
 
-    console.log('[Auth] setState pendingSelection, tenants:', tenants.length);
+    // Restore previously selected workspace if still valid
+    if (storedTenantId) {
+      const storedMembership = staffTenants.find(t => t.id === storedTenantId);
+      if (storedMembership) {
+        await tenantStore.set(storedTenantId);
+        setState({
+          token: activeToken,
+          user: { ...typedProfile, role: storedMembership.role, tenant_id: storedTenantId },
+          isLoading: false,
+          pendingSelection: null,
+          needsOnboarding: false,
+        });
+        return;
+      }
+    }
+
+    // Only one workspace — go straight in without asking
+    if (staffTenants.length === 1) {
+      const onlyTenant = staffTenants[0];
+      await tenantStore.set(onlyTenant.id);
+      setState({
+        token: activeToken,
+        user: { ...typedProfile, role: onlyTenant.role, tenant_id: onlyTenant.id },
+        isLoading: false,
+        pendingSelection: null,
+        needsOnboarding: false,
+      });
+      return;
+    }
+
+    console.log('[Auth] setState pendingSelection, staffTenants:', staffTenants.length);
     setState((s) => ({
       ...s,
-      token: session.access_token,
+      token: activeToken,
       isLoading: false,
       needsOnboarding: false,
-      pendingSelection: { userId: typedProfile.id, tenants },
+      pendingSelection: { userId: typedProfile.id, tenants: staffTenants },
     }));
   };
 
@@ -275,6 +356,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }));
   }, [state.user]);
 
+  const leaveCurrentWorkspace = useCallback(async () => {
+    const currentTenantId = state.user?.tenant_id;
+    const remainingTenants = ((state.user as any)?.tenants ?? []).filter(
+      (t: any) => t.id !== currentTenantId,
+    );
+    const userId = state.user?.id ?? '';
+    await tenantStore.remove();
+    setState((s) => ({
+      ...s,
+      user: null,
+      pendingSelection: { userId, tenants: remainingTenants },
+    }));
+  }, [state.user]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -285,6 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         selectTenant,
         switchTenant,
+        leaveCurrentWorkspace,
         role: state.user?.role ?? null,
       }}
     >

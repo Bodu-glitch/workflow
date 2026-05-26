@@ -2,6 +2,7 @@ import { Tabs, TabList, TabTrigger, TabSlot } from 'expo-router/ui';
 import { StyleSheet } from 'react-native';
 import { Pressable, Text } from '@/tw';
 import type { TabTriggerSlotProps } from 'expo-router/ui';
+import { ToastProvider } from '@/context/toast';
 
 const TAB_ICONS: Record<string, { default: string; focused: string }> = {
   Dashboard: {
@@ -43,6 +44,7 @@ function WebTabButton({ children, isFocused, ...props }: TabTriggerSlotProps & {
 
 export default function OTWebLayout() {
   return (
+    <ToastProvider>
     <Tabs>
       <TabSlot style={{ flex: 1 }} />
       <TabList style={styles.tabList}>
@@ -60,6 +62,7 @@ export default function OTWebLayout() {
         </TabTrigger>
       </TabList>
     </Tabs>
+    </ToastProvider>
   );
 }
 

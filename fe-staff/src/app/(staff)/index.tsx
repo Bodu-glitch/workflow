@@ -79,20 +79,28 @@ export default function MyTaskListScreen() {
       {/* Glass Header */}
       <View className="glass-effect px-5 pt-14 pb-3">
         <View className="flex-row items-center justify-between mb-4">
-          <View>
-            <Text className="text-[10px] font-bold uppercase tracking-widest text-primary" style={{ opacity: 0.7 }}>My Tasks</Text>
-            <Text className="text-xl font-extrabold text-on-surface tracking-tight">
-              {user?.full_name ?? 'Staff'}
-            </Text>
-          </View>
+          {/* Avatar + name → navigate to profile */}
+          <Pressable
+            onPress={() => router.push('/profile')}
+            className="flex-row items-center gap-3 active:opacity-70"
+          >
+            <View className="w-10 h-10 rounded-full bg-primary items-center justify-center">
+              <Text className="text-white font-bold text-sm">
+                {user?.full_name
+                  ? user.full_name.trim().split(/\s+/).slice(-2).map((w: string) => w[0].toUpperCase()).join('')
+                  : 'S'}
+              </Text>
+            </View>
+            <View>
+              <Text className="text-[10px] font-bold uppercase tracking-widest text-primary" style={{ opacity: 0.7 }}>My Tasks</Text>
+              <Text className="text-xl font-extrabold text-on-surface tracking-tight">
+                {user?.full_name ?? 'Staff'}
+              </Text>
+            </View>
+          </Pressable>
           <View className="flex-row gap-3 items-center">
             <Pressable onPress={() => router.push('/notifications')} className="active:opacity-60">
               <Text className="text-2xl">🔔</Text>
-            </Pressable>
-            <Pressable onPress={() => router.push('/(staff)/history')} className="active:opacity-60">
-              <View className="px-3 py-1.5 rounded-full bg-surface-container-high">
-                <Text className="text-xs font-bold text-primary">History</Text>
-              </View>
             </Pressable>
             <Pressable onPress={logout} className="w-9 h-9 items-center justify-center rounded-xl active:opacity-60">
               <Text className="text-on-surface-variant text-lg">⎋</Text>

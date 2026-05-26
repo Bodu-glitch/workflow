@@ -34,6 +34,7 @@ interface AuthContextValue extends AuthState {
   refreshProfile: () => Promise<void>;
   selectTenant: (userId: string, tenantId: string) => Promise<void>;
   switchTenant: () => Promise<void>;
+  leaveCurrentWorkspace: () => Promise<void>;
   role: UserRole | null;
 }
 
@@ -51,7 +52,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const processedSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Fallback: if onAuthStateChange never fires (rare Supabase edge case), stop loading after 8s
+    const loadingTimeout = setTimeout(() => {
+      setState(s => s.isLoading ? { ...s, isLoading: false } : s);
+    }, 8000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      clearTimeout(loadingTimeout);
       console.log('[Auth] onAuthStateChange event:', _event, 'session:', !!session);
       if (!session) {
         processedSessionRef.current = null;
@@ -72,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setState({ token: null, user: null, isLoading: false, pendingSelection: null, needsOnboarding: false });
       }
     });
-    return () => subscription.unsubscribe();
+    return () => { clearTimeout(loadingTimeout); subscription.unsubscribe(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -146,9 +153,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Fetch profile — tenantStore may already be set (returning user), so X-Tenant-ID is sent automatically
-    const tenantId = await tenantStore.get();
-    console.log('[Auth] tenantId from store:', tenantId);
+    // Clear stored tenant before profile fetch: sending a stale X-Tenant-ID causes the guard
+    // to return 401 if the membership was revoked. We validate the tenant from the profile
+    // response and restore it below if still valid.
+    const storedTenantId = await tenantStore.get();
+    console.log('[Auth] tenantId from store:', storedTenantId);
+    if (storedTenantId) await tenantStore.remove();
 
     const { data: profileData } = await authApi.profile();
     const profile = profileData as any;
@@ -168,9 +178,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (tenantId) {
-      setState({ token: session.access_token, user: typedProfile, isLoading: false, pendingSelection: null, needsOnboarding: false });
-      return;
+    if (storedTenantId) {
+      const storedMembership = tenants.find(t => t.id === storedTenantId);
+      if (storedMembership) {
+        // Stored tenant is still valid — restore it and navigate in directly
+        await tenantStore.set(storedTenantId);
+        setState({
+          token: session.access_token,
+          user: { ...typedProfile, role: storedMembership.role, tenant_id: storedTenantId },
+          isLoading: false,
+          pendingSelection: null,
+          needsOnboarding: false,
+        });
+        return;
+      }
+      // Stored tenant is stale (membership revoked/inactive) — fall through to selection
     }
 
     console.log('[Auth] setState pendingSelection, tenants:', tenants.length);
@@ -232,6 +254,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginWithGoogleForInvitation = useCallback(async (invitationToken: string) => {
+    // Clear existing session so handleSupabaseSession always runs fresh after OAuth
+    await supabase.auth.signOut().catch(() => {});
+    await tokenStore.remove();
+    await tokenStore.removeRefresh();
+    await tenantStore.remove();
+    processedSessionRef.current = null;
+
     if (Platform.OS === 'web') {
       if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(PENDING_INVITE_KEY, invitationToken);
     } else {
@@ -275,6 +304,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }));
   }, [state.user]);
 
+  const leaveCurrentWorkspace = useCallback(async () => {
+    const currentTenantId = state.user?.tenant_id;
+    const remainingTenants = ((state.user as any)?.tenants ?? []).filter(
+      (t: any) => t.id !== currentTenantId,
+    );
+    const userId = state.user?.id ?? '';
+    await tenantStore.remove();
+    setState((s) => ({
+      ...s,
+      user: null,
+      pendingSelection: { userId, tenants: remainingTenants },
+    }));
+  }, [state.user]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -285,6 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         selectTenant,
         switchTenant,
+        leaveCurrentWorkspace,
         role: state.user?.role ?? null,
       }}
     >
