@@ -469,7 +469,7 @@ export default function BOScheduleScreen() {
       ) : (
         <>
           {/* Leave filter pills */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 12 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
             {([['', 'Tất cả'], ['pending', 'Chờ duyệt'], ['approved', 'Đã duyệt'], ['rejected', 'Từ chối']] as const).map(([key, label]) => (
               <Pressable
                 key={key}
