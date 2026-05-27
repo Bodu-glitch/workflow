@@ -21,6 +21,10 @@ const TAB_ICONS: Record<string, { default: string; focused: string }> = {
     default: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>`,
     focused: `<svg width="22" height="22" viewBox="0 0 24 24" fill="#1E40AF" stroke="none"><path d="M10 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM4 19a6 6 0 0 1 12 0H4z"/><rect x="18" y="8" width="2" height="6" rx="1"/><rect x="15" y="10" width="8" height="2" rx="1"/></svg>`,
   },
+  'Lịch': {
+    default: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+    focused: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E40AF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="15" r="1" fill="#1E40AF"/><circle cx="12" cy="15" r="1" fill="#1E40AF"/><circle cx="16" cy="15" r="1" fill="#1E40AF"/></svg>`,
+  },
 };
 
 function WebTabButton({ children, isFocused, ...props }: TabTriggerSlotProps & { children?: React.ReactNode }) {
@@ -59,6 +63,9 @@ export default function OTWebLayout() {
         </TabTrigger>
         <TabTrigger name="assignment" href="/(ot)/assignment" asChild>
           <WebTabButton>Assign</WebTabButton>
+        </TabTrigger>
+        <TabTrigger name="schedule" href="/(ot)/schedule" asChild>
+          <WebTabButton>Lịch</WebTabButton>
         </TabTrigger>
       </TabList>
     </Tabs>

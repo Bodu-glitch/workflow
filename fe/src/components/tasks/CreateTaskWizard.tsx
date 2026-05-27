@@ -512,14 +512,14 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
 
   // ── Step 3 ──
   const renderStep3 = () => (
-    <ScrollView className="flex-1" contentContainerClassName="px-5 py-5 gap-5">
+    <ScrollView className="flex-1" contentContainerClassName="px-5 py-5 gap-5" contentContainerStyle={{ paddingBottom: 20 }}>
       <Text className="text-2xl font-extrabold text-on-surface">Select Location</Text>
 
       {/* Map preview / picker */}
       <Pressable
         onPress={() => setShowLocationPicker(true)}
         className="rounded-2xl overflow-hidden active:opacity-80"
-        style={{ height: 180, backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' }}
+        style={{ height: 120, backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' }}
       >
         {step3.location ? (
           <View className="w-full h-full items-center justify-center gap-2">
@@ -611,7 +611,6 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
         </View>
       </View>
 
-      <View className="h-20" />
     </ScrollView>
   );
 
@@ -657,24 +656,24 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
+
+          {/* Bottom button — in normal flow so ScrollView doesn't extend behind it */}
+          <View className="px-5 pb-10 pt-3 bg-surface border-t border-surface-container">
+            <Pressable
+              onPress={handleNext}
+              disabled={activeMutation.isPending}
+              className="h-14 rounded-2xl items-center justify-center active:opacity-80 disabled:opacity-60"
+              style={{ backgroundColor: '#1E40AF' }}
+            >
+              {activeMutation.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white font-bold text-base">{nextLabel}</Text>
+              )}
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
-
-      {/* Fixed bottom button */}
-      <View className="absolute bottom-0 left-0 right-0 px-5 pb-10 pt-3 bg-surface border-t border-surface-container">
-        <Pressable
-          onPress={handleNext}
-          disabled={activeMutation.isPending}
-          className="h-14 rounded-2xl items-center justify-center active:opacity-80 disabled:opacity-60"
-          style={{ backgroundColor: '#1E40AF' }}
-        >
-          {activeMutation.isPending ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text className="text-white font-bold text-base">{nextLabel}</Text>
-          )}
-        </Pressable>
-      </View>
 
       {/* Modals */}
       <StaffPickerModal

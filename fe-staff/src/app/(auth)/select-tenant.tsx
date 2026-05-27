@@ -3,6 +3,7 @@ import { Alert, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { useAuth } from '@/context/auth';
+import { supabase } from '@/lib/supabase';
 import { ApiError } from '@/lib/api/client';
 import { staffApi } from '@/lib/api/staff';
 import type { TenantOption, WorkspaceApplication, WorkspaceSearchResult } from '@/types/api';
@@ -406,22 +407,26 @@ export default function SelectTenantScreen() {
     });
   }, [myApplications, pendingSelection, selectTenant, logout, router]);
 
-  // Poll every 5 s while there are pending applications
-  const hasPendingApps = myApplications.some(a => a.status === 'pending');
+  // ── Realtime: lắng nghe status thay đổi của đơn ứng tuyển ─────────────────
+  const applicantId = pendingSelection?.userId;
   useEffect(() => {
-    if (!hasPendingApps || !token) return;
-    let isRunning = false;
-    const interval = setInterval(async () => {
-      if (isRunning) return;
-      isRunning = true;
-      try {
-        const res = await staffApi.myApplications();
-        setMyApplications(res.data as any);
-      } catch {}
-      isRunning = false;
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [hasPendingApps, token]);
+    if (!applicantId) return;
+
+    const channel = supabase
+      .channel(`my-applications:${applicantId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'workspace_applications',
+        filter: `applicant_id=eq.${applicantId}`,
+      }, () => {
+        refreshApplications();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applicantId]);
 
   // ── Client-side: exclude workspaces the user is already a member of ────────
   const memberIds    = new Set(pendingSelection?.tenants.map(t => t.id) ?? []);
