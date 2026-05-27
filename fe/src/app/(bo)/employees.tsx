@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ActivityIndicator, Image, Modal, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ApiError } from '@/lib/api/client';
 import { useToast } from '@/context/toast';
 import { useAuth } from '@/context/auth';
+import { supabase } from '@/lib/supabase';
 import type { StaffMember, StaffDisplayStatus, WorkspaceApplication, ViolationNote } from '@/types/api';
 
 type Tab = 'staff' | 'invitations' | 'applications';
@@ -276,8 +277,45 @@ function LockModal({
 export default function BOEmployeeManagementScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const isBO = role === 'business_owner';
+
+  // ── Realtime: invitations + staff membership ──────────────────────────────
+  useEffect(() => {
+    const tenantId = user?.tenant_id;
+    if (!tenantId) return;
+
+    const channel = supabase
+      .channel(`employees:${tenantId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'invitations',
+        filter: `tenant_id=eq.${tenantId}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['invitations'] });
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'user_tenants',
+        filter: `tenant_id=eq.${tenantId}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['staff'] });
+        qc.invalidateQueries({ queryKey: ['invitations'] });
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'workspace_applications',
+        filter: `tenant_id=eq.${tenantId}`,
+      }, () => {
+        qc.invalidateQueries({ queryKey: ['staff-applications'] });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.tenant_id, qc]);
 
   const [tab, setTab] = useState<Tab>('staff');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');

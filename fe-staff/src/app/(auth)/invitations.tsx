@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView } from '@/tw';
 import { useAuth } from '@/context/auth';
+import { supabase } from '@/lib/supabase';
 import { staffApi } from '@/lib/api/staff';
 import type { InAppInvitation } from '@/types/api';
 
@@ -28,7 +29,7 @@ function formatExpiry(dateStr: string): string {
 }
 
 export default function InvitationsScreen() {
-  const { refreshProfile, selectTenant } = useAuth();
+  const { refreshProfile, selectTenant, user } = useAuth();
   const router = useRouter();
   const [invitations, setInvitations] = useState<InAppInvitation[]>([]);
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -46,6 +47,26 @@ export default function InvitationsScreen() {
   }, []);
 
   useEffect(() => { fetchInvitations(); }, [fetchInvitations]);
+
+  // ── Realtime: tự động nhận lời mời mới ──────────────────────────────────
+  useEffect(() => {
+    const email = user?.email;
+    if (!email) return;
+
+    const channel = supabase
+      .channel(`my-invitations:${email}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'invitations',
+        filter: `email=eq.${email}`,
+      }, () => {
+        fetchInvitations();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.email, fetchInvitations]);
 
   async function navigateForward() {
     await refreshProfile();
