@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ActivityIndicator, Image, Modal, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, TextInput, Pressable, ScrollView } from '@/tw';
 import { staffApi } from '@/lib/api/staff';
@@ -92,6 +92,11 @@ export default function OTEmployeeManagementScreen() {
     return () => { supabase.removeChannel(channel); };
   }, [user?.tenant_id, qc]);
 
+  useFocusEffect(useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['staff-applications'] });
+    qc.invalidateQueries({ queryKey: ['invitations'] });
+  }, [qc]));
+
   const [tab, setTab] = useState<Tab>('staff');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -114,6 +119,7 @@ export default function OTEmployeeManagementScreen() {
     queryKey: ['staff-applications'],
     queryFn: () => staffApi.applications(),
     select: (d) => d.data,
+    refetchOnMount: 'always',
   });
 
   const staffProfileQuery = useQuery({

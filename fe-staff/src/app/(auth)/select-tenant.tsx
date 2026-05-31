@@ -330,6 +330,7 @@ export default function SelectTenantScreen() {
   // My applications state
   const [myApplications, setMyApplications] = useState<WorkspaceApplication[]>([]);
   const [withdrawingId, setWithdrawingId]   = useState<string | null>(null);
+  const [withdrawTarget, setWithdrawTarget] = useState<{ id: string; name: string } | null>(null);
   const [refreshing, setRefreshing]         = useState(false);
   const autoEnteringRef = useRef(false);
 
@@ -475,25 +476,25 @@ export default function SelectTenantScreen() {
     }
   }
 
-  async function handleWithdraw(appId: string, workspaceName: string) {
-    Alert.alert('Rút đơn', `Rút đơn ứng tuyển vào "${workspaceName}"?`, [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Rút đơn', style: 'destructive', onPress: async () => {
-          setWithdrawingId(appId);
-          try {
-            await staffApi.withdrawApplication(appId);
-            setMyApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'withdrawn' } : a));
-          } catch (e: any) {
-            const msg = e?.message ?? 'Không thể rút đơn';
-            console.error('[withdraw]', e);
-            Alert.alert('Lỗi', msg);
-          } finally {
-            setWithdrawingId(null);
-          }
-        },
-      },
-    ]);
+  function handleWithdraw(appId: string, workspaceName: string) {
+    setWithdrawTarget({ id: appId, name: workspaceName });
+  }
+
+  async function confirmWithdraw() {
+    if (!withdrawTarget) return;
+    const { id: appId } = withdrawTarget;
+    setWithdrawTarget(null);
+    setWithdrawingId(appId);
+    try {
+      await staffApi.withdrawApplication(appId);
+      setMyApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'withdrawn' } : a));
+    } catch (e: any) {
+      const msg = e?.message ?? 'Không thể rút đơn';
+      console.error('[withdraw]', e);
+      Alert.alert('Lỗi', msg);
+    } finally {
+      setWithdrawingId(null);
+    }
   }
 
   async function handleSelect(tenant: TenantOption) {
@@ -757,6 +758,42 @@ export default function SelectTenantScreen() {
           <Text className="text-sm font-semibold text-on-surface-variant">Đăng xuất</Text>
         </Pressable>
       </View>
+
+      {/* Withdraw confirmation modal */}
+      <Modal
+        visible={!!withdrawTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWithdrawTarget(null)}
+      >
+        <Pressable className="flex-1 bg-black/40 justify-center px-6" onPress={() => setWithdrawTarget(null)}>
+          <Pressable onPress={() => {}} className="bg-surface rounded-2xl overflow-hidden">
+            <View className="px-6 pt-6 pb-5 gap-2">
+              <Text className="text-base font-bold text-on-surface">Rút đơn ứng tuyển</Text>
+              <Text className="text-sm text-on-surface-variant leading-5">
+                Bạn có chắc muốn rút đơn ứng tuyển vào{' '}
+                <Text className="font-semibold text-on-surface">"{withdrawTarget?.name}"</Text>?
+              </Text>
+            </View>
+            <View className="h-px bg-surface-container" />
+            <View className="flex-row">
+              <Pressable
+                onPress={() => setWithdrawTarget(null)}
+                className="flex-1 h-13 items-center justify-center active:bg-surface-container"
+              >
+                <Text className="text-sm font-semibold text-on-surface-variant">Hủy</Text>
+              </Pressable>
+              <View className="w-px bg-surface-container" />
+              <Pressable
+                onPress={confirmWithdraw}
+                className="flex-1 h-13 items-center justify-center active:bg-error/10"
+              >
+                <Text className="text-sm font-bold text-error">Rút đơn</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Filter panel (bottom sheet modal) */}
       <FilterPanel
