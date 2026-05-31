@@ -381,11 +381,11 @@ export default function SelectTenantScreen() {
   // Load applications and invitations on mount
   useEffect(() => {
     if (!token) return;
-    staffApi.myApplications()
-      .then(res => setMyApplications(res.data as any))
-      .catch(() => {});
-    staffApi.myInvitations()
-      .then(res => setPendingInviteCount(res.data.filter(i => i.status === 'pending').length))
+    Promise.all([staffApi.myApplications(), staffApi.myInvitations()])
+      .then(([appsRes, invRes]) => {
+        setMyApplications(appsRes.data as any);
+        setPendingInviteCount(invRes.data.filter(i => i.status === 'pending').length);
+      })
       .catch(() => {});
   }, [token]);
 
