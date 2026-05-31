@@ -114,6 +114,7 @@ export default function OTEmployeeManagementScreen() {
     queryKey: ['staff-applications'],
     queryFn: () => staffApi.applications(),
     select: (d) => d.data,
+    refetchOnMount: 'always',
   });
 
   const staffProfileQuery = useQuery({
