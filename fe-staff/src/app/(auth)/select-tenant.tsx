@@ -484,8 +484,10 @@ export default function SelectTenantScreen() {
           try {
             await staffApi.withdrawApplication(appId);
             setMyApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'withdrawn' } : a));
-          } catch {
-            Alert.alert('Lỗi', 'Không thể rút đơn');
+          } catch (e: any) {
+            const msg = e?.message ?? 'Không thể rút đơn';
+            console.error('[withdraw]', e);
+            Alert.alert('Lỗi', msg);
           } finally {
             setWithdrawingId(null);
           }
