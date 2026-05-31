@@ -312,7 +312,7 @@ function FilterPanel({ visible, initial, onApply, onClose }: FilterPanelProps) {
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function SelectTenantScreen() {
-  const { pendingSelection, selectTenant, logout, token } = useAuth();
+  const { pendingSelection, selectTenant, logout, token, user } = useAuth();
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
@@ -427,6 +427,28 @@ export default function SelectTenantScreen() {
     return () => { supabase.removeChannel(channel); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicantId]);
+
+  // ── Realtime: lắng nghe lời mời mới gửi đến email của user ───────────────
+  const userEmail = user?.email;
+  useEffect(() => {
+    if (!userEmail) return;
+
+    const channel = supabase
+      .channel(`select-tenant-invitations:${userEmail}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'invitations',
+        filter: `email=eq.${userEmail}`,
+      }, () => {
+        staffApi.myInvitations()
+          .then(res => setPendingInviteCount(res.data.filter(i => i.status === 'pending').length))
+          .catch(() => {});
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [userEmail]);
 
   // ── Client-side: exclude workspaces the user is already a member of ────────
   const memberIds    = new Set(pendingSelection?.tenants.map(t => t.id) ?? []);
