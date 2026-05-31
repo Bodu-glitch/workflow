@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, ActivityIndicator, Modal } from 'react-native';
+import { Alert, ActivityIndicator, Modal, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { useAuth } from '@/context/auth';
@@ -476,23 +476,31 @@ export default function SelectTenantScreen() {
   }
 
   async function handleWithdraw(appId: string, workspaceName: string) {
+    const doWithdraw = async () => {
+      setWithdrawingId(appId);
+      try {
+        await staffApi.withdrawApplication(appId);
+        setMyApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'withdrawn' } : a));
+      } catch (e: any) {
+        const msg = e?.message ?? 'Không thể rút đơn';
+        console.error('[withdraw]', e);
+        Alert.alert('Lỗi', msg);
+      } finally {
+        setWithdrawingId(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      // Alert.alert is a no-op on React Native Web — use browser confirm instead
+      if (window.confirm(`Rút đơn ứng tuyển vào "${workspaceName}"?`)) {
+        await doWithdraw();
+      }
+      return;
+    }
+
     Alert.alert('Rút đơn', `Rút đơn ứng tuyển vào "${workspaceName}"?`, [
       { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Rút đơn', style: 'destructive', onPress: async () => {
-          setWithdrawingId(appId);
-          try {
-            await staffApi.withdrawApplication(appId);
-            setMyApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'withdrawn' } : a));
-          } catch (e: any) {
-            const msg = e?.message ?? 'Không thể rút đơn';
-            console.error('[withdraw]', e);
-            Alert.alert('Lỗi', msg);
-          } finally {
-            setWithdrawingId(null);
-          }
-        },
-      },
+      { text: 'Rút đơn', style: 'destructive', onPress: doWithdraw },
     ]);
   }
 
