@@ -312,7 +312,7 @@ function FilterPanel({ visible, initial, onApply, onClose }: FilterPanelProps) {
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function SelectTenantScreen() {
-  const { pendingSelection, selectTenant, logout, token } = useAuth();
+  const { pendingSelection, selectTenant, logout, token, user } = useAuth();
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
@@ -381,11 +381,11 @@ export default function SelectTenantScreen() {
   // Load applications and invitations on mount
   useEffect(() => {
     if (!token) return;
-    staffApi.myApplications()
-      .then(res => setMyApplications(res.data as any))
-      .catch(() => {});
-    staffApi.myInvitations()
-      .then(res => setPendingInviteCount(res.data.filter(i => i.status === 'pending').length))
+    Promise.all([staffApi.myApplications(), staffApi.myInvitations()])
+      .then(([appsRes, invRes]) => {
+        setMyApplications(appsRes.data as any);
+        setPendingInviteCount(invRes.data.filter(i => i.status === 'pending').length);
+      })
       .catch(() => {});
   }, [token]);
 
@@ -428,6 +428,28 @@ export default function SelectTenantScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicantId]);
 
+  // ── Realtime: lắng nghe lời mời mới gửi đến email của user ───────────────
+  const userEmail = user?.email;
+  useEffect(() => {
+    if (!userEmail) return;
+
+    const channel = supabase
+      .channel(`select-tenant-invitations:${userEmail}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'invitations',
+        filter: `email=eq.${userEmail}`,
+      }, () => {
+        staffApi.myInvitations()
+          .then(res => setPendingInviteCount(res.data.filter(i => i.status === 'pending').length))
+          .catch(() => {});
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [userEmail]);
+
   // ── Client-side: exclude workspaces the user is already a member of ────────
   const memberIds    = new Set(pendingSelection?.tenants.map(t => t.id) ?? []);
   const searchResults = allWorkspaces.filter(ws => !memberIds.has(ws.id));
@@ -462,8 +484,10 @@ export default function SelectTenantScreen() {
           try {
             await staffApi.withdrawApplication(appId);
             setMyApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'withdrawn' } : a));
-          } catch {
-            Alert.alert('Lỗi', 'Không thể rút đơn');
+          } catch (e: any) {
+            const msg = e?.message ?? 'Không thể rút đơn';
+            console.error('[withdraw]', e);
+            Alert.alert('Lỗi', msg);
           } finally {
             setWithdrawingId(null);
           }
