@@ -271,7 +271,7 @@ export default function ProfileScreen() {
   const paymentQuery = useQuery({
     queryKey: ['workspace-payment'],
     queryFn: () => workspaceApi.getPaymentInfo(),
-    enabled: isBO,
+    enabled: isBO || isOT,
   });
 
   const payMutation = useMutation({
@@ -1271,8 +1271,8 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── Payment info (BO only) ── */}
-        {isBO && (
+        {/* ── Payment info (BO + OT) ── */}
+        {(isBO || isOT) && (
           <View className="mb-6">
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">

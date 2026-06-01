@@ -32,10 +32,10 @@ export class WorkspaceController {
     return this.workspaceService.getPaymentInfo(user.tenant_id);
   }
 
-  /** PATCH /workspace/payment — BO only: set bank payment config */
+  /** PATCH /workspace/payment — BO + OT: set bank payment config */
   @Patch('payment')
   @UseGuards(RolesGuard)
-  @Roles('business_owner')
+  @Roles('business_owner', 'operator')
   updatePaymentInfo(
     @CurrentUser() user: CurrentUserType,
     @Body() body: { bank_code: string; account_number: string; account_name: string },
