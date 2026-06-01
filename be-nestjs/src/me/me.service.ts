@@ -104,6 +104,57 @@ export class MeService {
     return { message: 'Certificate deleted' };
   }
 
+  // ── Workspace services & payment ────────────────────────────────────────────
+
+  async getWorkspaceServices(tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('tenant_services')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .order('name');
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async getPaymentInfo(tenantId: string) {
+    const { data } = await this.supabase.db
+      .from('tenants')
+      .select('settings')
+      .eq('id', tenantId)
+      .single();
+    return (data?.settings as any)?.payment ?? null;
+  }
+
+  async getTaskItems(taskId: string) {
+    const { data, error } = await this.supabase.db
+      .from('task_service_items')
+      .select('id, service_id, label, unit_price, is_custom, checked')
+      .eq('task_id', taskId)
+      .order('created_at');
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async saveTaskItems(taskId: string, items: any[]) {
+    // Replace all items for this task
+    await this.supabase.db.from('task_service_items').delete().eq('task_id', taskId);
+    if (items.length === 0) return [];
+    const rows = items.map((item) => ({
+      task_id: taskId,
+      service_id: item.service_id ?? null,
+      label: item.label,
+      unit_price: Number(item.unit_price ?? 0),
+      is_custom: item.is_custom ?? false,
+      checked: item.checked ?? true,
+    }));
+    const { data, error } = await this.supabase.db
+      .from('task_service_items')
+      .insert(rows)
+      .select('id, service_id, label, unit_price, is_custom, checked');
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
   // ── Task status progression ─────────────────────────────────────────────────
 
   private async getAssignedTask(taskId: string, userId: string, tenantId: string) {

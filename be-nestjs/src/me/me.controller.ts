@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Post, Delete,
+  Controller, Get, Patch, Post, Put, Delete,
   Query, Body, Param, UseGuards, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -66,6 +66,29 @@ export class MeController {
     @Param('id') id: string,
   ) {
     return this.meService.deleteCertificate(user.id, id);
+  }
+
+  @Get('workspace/services')
+  getWorkspaceServices(@CurrentUser() user: CurrentUserType) {
+    return this.meService.getWorkspaceServices(user.tenant_id);
+  }
+
+  @Get('workspace/payment')
+  getPaymentInfo(@CurrentUser() user: CurrentUserType) {
+    return this.meService.getPaymentInfo(user.tenant_id);
+  }
+
+  @Get('tasks/:id/items')
+  getTaskItems(@Param('id') id: string) {
+    return this.meService.getTaskItems(id);
+  }
+
+  @Put('tasks/:id/items')
+  saveTaskItems(
+    @Param('id') id: string,
+    @Body() body: { items: any[] },
+  ) {
+    return this.meService.saveTaskItems(id, body.items);
   }
 
   /** GET /me/tasks/pool — unassigned tasks in tenant. MUST be before /me/tasks */

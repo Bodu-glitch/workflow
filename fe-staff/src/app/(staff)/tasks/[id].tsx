@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
 import { meApi } from '@/lib/api/me';
+import { ChecklistAndPayment } from '@/components/tasks/ChecklistAndPayment';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
@@ -161,6 +162,7 @@ function ActionPanel({ task, onSuccess }: { task: Task; onSuccess: () => void })
   const [collectedAmount, setCollectedAmount] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [showReject, setShowReject] = useState(false);
+  const [checklistTotal, setChecklistTotal] = useState(0);
 
   const startMut = useMutation({
     mutationFn: () => meApi.startMoving(task.id),
@@ -274,6 +276,13 @@ function ActionPanel({ task, onSuccess }: { task: Task; onSuccess: () => void })
 
       {/* ── in_progress: check-out ── */}
       {status === 'in_progress' && (
+        <>
+        <ChecklistAndPayment
+          taskId={task.id}
+          taskTitle={task.title}
+          tenantId={(task as any).tenant_id ?? ''}
+          onChange={(_, total) => setChecklistTotal(total)}
+        />
         <Section title="Hoàn thành nhiệm vụ">
           <TextInput
             className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface mb-3"
@@ -310,6 +319,7 @@ function ActionPanel({ task, onSuccess }: { task: Task; onSuccess: () => void })
             {checkoutMut.isPending ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-bold text-base">🏁 Hoàn thành</Text>}
           </Pressable>
         </Section>
+        </>
       )}
 
       {/* ── Reject (todo / moving / arrived) ── */}
