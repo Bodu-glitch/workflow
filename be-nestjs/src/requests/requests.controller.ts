@@ -69,6 +69,14 @@ export class RequestsController {
     return this.service.matchCategories(dto.description);
   }
 
+  /** POST /requests/:id/create-task — BO/OT converts customer request into a pool task */
+  @Post(':id/create-task')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner', 'operator')
+  createTaskFromRequest(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.service.createTaskFromRequest(id, user);
+  }
+
   @Get(':id')
   getRequest(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
     return this.service.getRequest(id, user);

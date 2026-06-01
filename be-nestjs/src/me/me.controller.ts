@@ -78,19 +78,6 @@ export class MeController {
     return this.meService.getPaymentInfo(user.tenant_id);
   }
 
-  @Get('tasks/:id/items')
-  getTaskItems(@Param('id') id: string) {
-    return this.meService.getTaskItems(id);
-  }
-
-  @Put('tasks/:id/items')
-  saveTaskItems(
-    @Param('id') id: string,
-    @Body() body: { items: any[] },
-  ) {
-    return this.meService.saveTaskItems(id, body.items);
-  }
-
   /** GET /me/tasks/pool — unassigned tasks in tenant. MUST be before /me/tasks */
   @Get('tasks/pool')
   getPoolTasks(
@@ -136,6 +123,19 @@ export class MeController {
     @CurrentUser() user: CurrentUserType,
   ) {
     return this.meService.claimPoolTask(id, user);
+  }
+
+  @Get('tasks/:id/items')
+  getTaskItems(@Param('id') id: string) {
+    return this.meService.getTaskItems(id);
+  }
+
+  @Put('tasks/:id/items')
+  saveTaskItems(
+    @Param('id') id: string,
+    @Body() body: { items: any[] },
+  ) {
+    return this.meService.saveTaskItems(id, body.items);
   }
 
   @Get('tasks')

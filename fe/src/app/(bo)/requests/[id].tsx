@@ -81,6 +81,19 @@ export default function BORequestDetailScreen() {
     onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
+  const createTaskMutation = useMutation({
+    mutationFn: () => requestsApi.createTask(id),
+    onSuccess: (res: any) => {
+      invalidate();
+      const taskId = res?.task_id ?? res?.data?.task_id;
+      Alert.alert('✅ Đã tạo task', 'Task đã được thêm vào pool và thông báo đến staff gần đó.', [
+        { text: 'Xem task', onPress: () => router.push({ pathname: '/(bo)/tasks/[id]', params: { id: taskId } }) },
+        { text: 'OK', style: 'cancel' },
+      ]);
+    },
+    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Không thể tạo task'),
+  });
+
   if (isLoading) return <LoadingScreen />;
   if (isError || !data) return <ErrorView onRetry={refetch} />;
 
@@ -90,6 +103,7 @@ export default function BORequestDetailScreen() {
   const canPushToPool = req.status === 'negotiating';
   const canCancel = ['available', 'negotiating'].includes(req.status);
   const isTerminal = ['completed', 'completed_late', 'cancelled'].includes(req.status);
+  const canCreateTask = ['pending_assignment', 'available'].includes(req.status) && !(req as any).task_id;
 
   return (
     <View className="flex-1 bg-surface">
@@ -144,8 +158,33 @@ export default function BORequestDetailScreen() {
           )}
         </Section>
 
+        {/* Task link if already created */}
+        {(req as any).task_id && (
+          <Section title="Task liên kết">
+            <Pressable
+              onPress={() => router.push({ pathname: '/(bo)/tasks/[id]', params: { id: (req as any).task_id } })}
+              className="py-3 rounded-xl bg-primary/10 items-center active:opacity-70"
+            >
+              <Text className="text-sm font-bold text-primary">🔧 Xem task đang thực hiện →</Text>
+            </Pressable>
+          </Section>
+        )}
+
         {!isTerminal && (
-          <Section title="Actions">
+          <Section title="Hành động">
+            {/* Create task from customer request */}
+            {canCreateTask && (
+              <Pressable
+                onPress={() => createTaskMutation.mutate()}
+                disabled={createTaskMutation.isPending}
+                className="py-4 rounded-2xl bg-primary items-center mb-3 active:opacity-80 disabled:opacity-50"
+              >
+                {createTaskMutation.isPending
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text className="text-white font-bold">🚀 Tạo task cho staff</Text>
+                }
+              </Pressable>
+            )}
             {canPushToPool && (
               <Pressable
                 onPress={() => pushToPoolMutation.mutate()}

@@ -31,7 +31,7 @@ export interface TaskServiceItem {
 }
 
 export const meApi = {
-  tasks: (status?: TaskStatus, page = 1, limit = 20) => {
+  tasks: (status?: string, page = 1, limit = 20) => {
     const q = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (status) q.set('status', status);
     return apiFetch<PaginatedResponse<Task>>(`/me/tasks?${q}`);

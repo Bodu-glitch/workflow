@@ -320,7 +320,10 @@ export class MeService {
       `, { count: 'exact' })
       .eq('user_id', user.id);
 
-    if (status) {
+    if (status === 'active') {
+      // "Đang thực hiện" bao gồm cả moving/arrived/in_progress
+      query = query.in('tasks.status', ['moving', 'arrived', 'in_progress']);
+    } else if (status) {
       query = query.eq('tasks.status', status);
     }
 

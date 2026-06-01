@@ -572,6 +572,90 @@ export class RequestsService {
     }
   }
 
+  // BO/OT: convert a customer service_request into a pool task
+  async createTaskFromRequest(requestId: string, user: CurrentUser) {
+    const { data: req, error: reqErr } = await this.supabase.db
+      .from('service_requests')
+      .select('*, customer:customer_id(id, full_name, phone, email)')
+      .eq('id', requestId)
+      .single();
+
+    if (reqErr || !req) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Request not found' });
+    if (req.tenant_id !== user.tenant_id) {
+      throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Request does not belong to your workspace' });
+    }
+    if (req.task_id) {
+      throw new UnprocessableEntityException({ code: 'TASK_ALREADY_CREATED', message: 'Task already created from this request' });
+    }
+
+    const title = (req.description ?? '').slice(0, 100) || 'Yêu cầu từ khách hàng';
+    const { data: task, error: taskErr } = await this.supabase.db
+      .from('tasks')
+      .insert({
+        title,
+        description: req.description,
+        tenant_id: req.tenant_id,
+        created_by: user.id,
+        status: 'todo',
+        priority: req.is_emergency ? 'urgent' : 'medium',
+        location_lat: req.location_lat,
+        location_lng: req.location_lng,
+        location_name: req.location_name ?? req.location_address,
+        location_radius_m: 100,
+        customer_name: (req.customer as any)?.full_name ?? null,
+        customer_phone: (req.customer as any)?.phone ?? null,
+        customer_email: (req.customer as any)?.email ?? null,
+        scheduled_at: req.scheduled_at,
+      })
+      .select()
+      .single();
+
+    if (taskErr || !task) throw new BadRequestException(taskErr?.message ?? 'Failed to create task');
+
+    // Link task back to service_request
+    await this.supabase.db
+      .from('service_requests')
+      .update({ task_id: task.id, status: 'pending_assignment' })
+      .eq('id', requestId);
+
+    // Notify nearby staff (F1) — fire-and-forget
+    if (task.location_lat && task.location_lng) {
+      const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: locs } = await this.supabase.db
+        .from('staff_locations')
+        .select('user_id, lat, lng')
+        .eq('tenant_id', user.tenant_id)
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false });
+
+      if (locs && locs.length > 0) {
+        const seen = new Set<string>();
+        const nearby: string[] = [];
+        for (const loc of locs) {
+          if (seen.has(loc.user_id)) continue;
+          seen.add(loc.user_id);
+          const dLat = (task.location_lat - loc.lat) * Math.PI / 180;
+          const dLng = (task.location_lng - loc.lng) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(task.location_lat * Math.PI / 180) * Math.cos(loc.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+          const dist = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          if (dist <= 10_000) nearby.push(loc.user_id);
+        }
+        if (nearby.length > 0) {
+          void this.notifications.sendPushNotification({
+            user_ids: nearby,
+            type: 'new_pool_task',
+            title: 'Nhiệm vụ mới gần bạn',
+            body: `${task.title} – Nhấn để nhận ngay!`,
+            task_id: task.id,
+            tenant_id: user.tenant_id,
+          });
+        }
+      }
+    }
+
+    return { task_id: task.id, message: 'Task created and added to pool' };
+  }
+
   private enforceAccess(request: any, user: CurrentUser) {
     if (user.role === 'superadmin') return;
     if (user.role === 'customer' && request.customer_id !== user.id) {
