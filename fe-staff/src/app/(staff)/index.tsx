@@ -11,14 +11,14 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { useAuth } from '@/context/auth';
 import type { Task, TaskStatus } from '@/types/api';
 
-type TabKey = 'pool' | 'todo' | 'in_progress' | 'done' | 'cancelled';
+type TabKey = 'pool' | 'todo' | 'active' | 'done' | 'cancelled';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'pool',        label: '🏊 Pool' },
-  { key: 'todo',        label: 'Mới' },
-  { key: 'in_progress', label: 'Đang làm' },
-  { key: 'done',        label: 'Hoàn thành' },
-  { key: 'cancelled',   label: 'Đã hủy' },
+  { key: 'pool',      label: '🏊 Pool' },
+  { key: 'todo',      label: 'Mới' },
+  { key: 'active',    label: '🔧 Đang thực hiện' },
+  { key: 'done',      label: 'Hoàn thành' },
+  { key: 'cancelled', label: 'Đã hủy' },
 ];
 
 // ── Task card (my assigned tasks) ─────────────────────────────────────────────
@@ -139,7 +139,7 @@ export default function MyTaskListScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('todo');
 
   const isPool = activeTab === 'pool';
-  const status = isPool ? undefined : activeTab as TaskStatus;
+  const status = isPool ? undefined : activeTab as string;
 
   const myTasksQuery = useQuery({
     queryKey: ['me-tasks', status],
