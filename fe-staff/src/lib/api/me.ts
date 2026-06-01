@@ -21,6 +21,15 @@ export interface UserProfile {
   online_status?: OnlineStatus | null;
 }
 
+export interface TaskServiceItem {
+  id?: string;
+  service_id?: string | null;
+  label: string;
+  unit_price: number;
+  is_custom?: boolean;
+  checked: boolean;
+}
+
 export const meApi = {
   tasks: (status?: TaskStatus, page = 1, limit = 20) => {
     const q = new URLSearchParams({ page: String(page), limit: String(limit) });
@@ -78,5 +87,38 @@ export const meApi = {
     apiFetch<{ message: string }>('/me/leave-workspace', {
       method: 'POST',
       body: JSON.stringify({ reason }),
+    }),
+
+  poolTasks: (page = 1, limit = 20) =>
+    apiFetch<PaginatedResponse<Task>>(`/me/tasks/pool?page=${page}&limit=${limit}`),
+
+  claimPoolTask: (taskId: string) =>
+    apiFetch<{ message: string; task_id: string }>(`/me/tasks/${taskId}/claim`, { method: 'POST' }),
+
+  workspaceServices: () =>
+    apiFetch<{ data: Array<{ id: string; name: string }> }>('/me/workspace/services'),
+
+  paymentInfo: () =>
+    apiFetch<{ data: { bank_code: string; account_number: string; account_name: string } | null }>('/me/workspace/payment'),
+
+  getTaskItems: (taskId: string) =>
+    apiFetch<{ data: TaskServiceItem[] }>(`/me/tasks/${taskId}/items`),
+
+  saveTaskItems: (taskId: string, items: TaskServiceItem[]) =>
+    apiFetch<{ data: TaskServiceItem[] }>(`/me/tasks/${taskId}/items`, {
+      method: 'PUT',
+      body: JSON.stringify({ items }),
+    }),
+
+  startMoving: (taskId: string) =>
+    apiFetch<{ status: string }>(`/me/tasks/${taskId}/start`, { method: 'POST' }),
+
+  markArrived: (taskId: string) =>
+    apiFetch<{ status: string }>(`/me/tasks/${taskId}/arrive`, { method: 'POST' }),
+
+  beginWork: (taskId: string, gpsLat: number, gpsLng: number) =>
+    apiFetch<{ status: string }>(`/me/tasks/${taskId}/begin`, {
+      method: 'POST',
+      body: JSON.stringify({ gps_lat: gpsLat, gps_lng: gpsLng }),
     }),
 };

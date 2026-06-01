@@ -12,10 +12,13 @@
       "bundleIdentifier": "com.bodu111.staffapp",
       "supportsTablet": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Ứng dụng cần vị trí của bạn để nhận nhiệm vụ gần bạn.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Ứng dụng theo dõi vị trí để phân công nhiệm vụ chính xác hơn."
       }
     },
     "android": {
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,7 +46,13 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ứng dụng cần vị trí của bạn để nhận nhiệm vụ gần bạn."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

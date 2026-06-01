@@ -39,6 +39,17 @@ export const workspaceApi = {
   listAllCategories: () =>
     apiFetch<{ data: ServiceCategory[] }>('/categories'),
 
+  /** GET /workspace/payment — BO + OT */
+  getPaymentInfo: () =>
+    apiFetch<{ bank_code: string; account_number: string; account_name: string } | null>('/workspace/payment'),
+
+  /** PATCH /workspace/payment — BO only */
+  updatePaymentInfo: (info: { bank_code: string; account_number: string; account_name: string }) =>
+    apiFetch<{ bank_code: string; account_number: string; account_name: string }>('/workspace/payment', {
+      method: 'PATCH',
+      body: JSON.stringify(info),
+    }),
+
   /** POST /workspace/logo — BO only */
   updateLogo: async (file: { uri: string; name: string; type: string }): Promise<{ data: { id: string; logo_url: string } }> => {
     const token = await tokenStore.get();

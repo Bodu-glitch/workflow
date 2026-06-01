@@ -9,6 +9,8 @@ import { useColorScheme, Alert } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider } from '@/context/auth';
 import { useAuth } from '@/context/auth';
+import { LocationTracker } from '@/context/location';
+import { PoolTaskAlert } from '@/components/PoolTaskAlert';
 import { supabase } from '@/lib/supabase';
 
 const queryClient = new QueryClient({
@@ -87,6 +89,8 @@ export default function RootLayout() {
           <AnimatedSplashOverlay />
           <RootStack />
           <InvitationListener />
+          <LocationTracker />
+          <PoolTaskAlert />
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>
