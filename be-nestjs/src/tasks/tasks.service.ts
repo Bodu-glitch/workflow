@@ -94,9 +94,47 @@ export class TasksService {
         task_id: task.id,
         tenant_id: user.tenant_id,
       });
+    } else if (task.location_lat && task.location_lng) {
+      // No assignees + has location → pool task → notify nearby staff
+      void this.notifyNearbyPoolStaff(task);
     }
 
     return this.getTask(task.id, user);
+  }
+
+  private async notifyNearbyPoolStaff(task: { id: string; tenant_id: string; title: string; location_lat: number; location_lng: number }) {
+    const RADIUS_M = 10_000; // 10 km
+    const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // ignore stale locations > 5min
+
+    const { data: locations } = await this.supabase.db
+      .from('staff_locations')
+      .select('user_id, lat, lng')
+      .eq('tenant_id', task.tenant_id)
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false });
+
+    if (!locations || locations.length === 0) return;
+
+    // Deduplicate — only latest record per user
+    const seen = new Set<string>();
+    const nearbyIds: string[] = [];
+    for (const loc of locations) {
+      if (seen.has(loc.user_id)) continue;
+      seen.add(loc.user_id);
+      const dist = haversineDistance(task.location_lat, task.location_lng, loc.lat, loc.lng);
+      if (dist <= RADIUS_M) nearbyIds.push(loc.user_id);
+    }
+
+    if (nearbyIds.length === 0) return;
+
+    void this.notifications.sendPushNotification({
+      user_ids: nearbyIds,
+      type: 'new_pool_task',
+      title: 'Nhiệm vụ mới gần bạn',
+      body: `${task.title} – Nhấn để nhận ngay!`,
+      task_id: task.id,
+      tenant_id: task.tenant_id,
+    });
   }
 
   async listTasks(user: CurrentUser, pagination: PaginationDto, filters: {
