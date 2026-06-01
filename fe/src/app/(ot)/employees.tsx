@@ -119,7 +119,7 @@ export default function OTEmployeeManagementScreen() {
     queryFn: () => staffApi.applications(),
     select: (d) => d.data,
     refetchOnMount: 'always',
-    refetchInterval: 5000,
+    refetchInterval: 2000,
   });
 
   const staffProfileQuery = useQuery({
