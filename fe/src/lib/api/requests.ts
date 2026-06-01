@@ -49,4 +49,9 @@ export const requestsApi = {
       method: 'PATCH',
       body: JSON.stringify({ reason }),
     }),
+
+  createTask: (id: string) =>
+    apiFetch<{ task_id: string; message: string }>(`/requests/${id}/create-task`, {
+      method: 'POST',
+    }),
 };
