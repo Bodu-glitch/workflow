@@ -144,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('[Auth] handleSupabaseSession start, token prefix:', session.access_token?.substring(0, 20));
     await tokenStore.set(session.access_token);
     await tokenStore.setRefresh(session.refresh_token);
+    supabase.realtime.setAuth(session.access_token);
 
     // Check for pending invitation token (new user accepting invite via email link)
     const pendingInvite = Platform.OS === 'web'
