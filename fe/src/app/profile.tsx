@@ -184,6 +184,12 @@ export default function ProfileScreen() {
   const [svcEditing, setSvcEditing] = useState(false);
   const [selectedCatIds, setSelectedCatIds] = useState<Set<string>>(new Set());
 
+  // ── Payment info state (BO only) ──────────────────────────────────────────
+  const [payEditing, setPayEditing] = useState(false);
+  const [payBankCode, setPayBankCode] = useState('');
+  const [payAccountNumber, setPayAccountNumber] = useState('');
+  const [payAccountName, setPayAccountName] = useState('');
+
   const profileQuery = useQuery({
     queryKey: ['me-profile'],
     queryFn: () => meApi.getProfile(),
@@ -261,6 +267,34 @@ export default function ProfileScreen() {
     },
     onError: () => showToast('Không thể đổi trạng thái. Vui lòng thử lại.', 'error', 'Lỗi'),
   });
+
+  const paymentQuery = useQuery({
+    queryKey: ['workspace-payment'],
+    queryFn: () => workspaceApi.getPaymentInfo(),
+    enabled: isBO,
+  });
+
+  const payMutation = useMutation({
+    mutationFn: () => workspaceApi.updatePaymentInfo({
+      bank_code: payBankCode.trim().toUpperCase(),
+      account_number: payAccountNumber.trim(),
+      account_name: payAccountName.trim().toUpperCase(),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspace-payment'] });
+      setPayEditing(false);
+      showToast('Đã lưu thông tin thanh toán.', 'success', 'Thành công');
+    },
+    onError: () => showToast('Không thể lưu thông tin thanh toán.', 'error', 'Lỗi'),
+  });
+
+  function startPayEdit() {
+    const p = (paymentQuery.data as any) ?? null;
+    setPayBankCode(p?.bank_code ?? '');
+    setPayAccountNumber(p?.account_number ?? '');
+    setPayAccountName(p?.account_name ?? '');
+    setPayEditing(true);
+  }
 
   function startSvcEdit() {
     setSelectedCatIds(new Set((selectedCatsQuery.data ?? []).map((c: any) => c.id)));
@@ -1233,6 +1267,111 @@ export default function ProfileScreen() {
                   </View>
                 );
               })()
+            )}
+          </View>
+        )}
+
+        {/* ── Payment info (BO only) ── */}
+        {isBO && (
+          <View className="mb-6">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                💳 Thanh toán QR
+              </Text>
+              {!payEditing && (
+                <Pressable onPress={startPayEdit} className="px-3 py-1 rounded-lg bg-surface-container active:opacity-60">
+                  <Text className="text-xs font-semibold text-primary">
+                    {(paymentQuery.data as any) ? 'Chỉnh sửa' : 'Cài đặt'}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            {payEditing ? (
+              <View className="bg-surface-container-lowest rounded-2xl p-4 gap-3">
+                <View>
+                  <Text className="text-xs font-semibold text-on-surface-variant mb-1">Mã ngân hàng (VietQR)</Text>
+                  <TextInput
+                    className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface"
+                    placeholder="VD: VCB, TCB, MB, VTB, ACB..."
+                    placeholderTextColor="#737685"
+                    value={payBankCode}
+                    onChangeText={(t) => setPayBankCode(t.toUpperCase())}
+                    autoCapitalize="characters"
+                  />
+                  <Text className="text-[10px] text-on-surface-variant mt-1">
+                    Xem mã tại vietqr.io/danh-sach-ngan-hang
+                  </Text>
+                </View>
+
+                <View>
+                  <Text className="text-xs font-semibold text-on-surface-variant mb-1">Số tài khoản</Text>
+                  <TextInput
+                    className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface"
+                    placeholder="Nhập số tài khoản..."
+                    placeholderTextColor="#737685"
+                    value={payAccountNumber}
+                    onChangeText={setPayAccountNumber}
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View>
+                  <Text className="text-xs font-semibold text-on-surface-variant mb-1">Tên chủ tài khoản</Text>
+                  <TextInput
+                    className="bg-surface-container-high rounded-xl px-4 py-3 text-sm text-on-surface"
+                    placeholder="NGUYEN VAN A"
+                    placeholderTextColor="#737685"
+                    value={payAccountName}
+                    onChangeText={(t) => setPayAccountName(t.toUpperCase())}
+                    autoCapitalize="characters"
+                  />
+                </View>
+
+                <View className="flex-row gap-2 mt-1">
+                  <Pressable
+                    onPress={() => payMutation.mutate()}
+                    disabled={payMutation.isPending || !payBankCode || !payAccountNumber || !payAccountName}
+                    className="flex-1 py-3 rounded-xl bg-primary items-center active:opacity-80 disabled:opacity-40"
+                  >
+                    {payMutation.isPending
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text className="text-white font-bold text-sm">Lưu</Text>
+                    }
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setPayEditing(false)}
+                    className="px-5 py-3 rounded-xl bg-surface-container items-center active:opacity-70"
+                  >
+                    <Text className="text-sm text-on-surface-variant">Hủy</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (paymentQuery.data as any) ? (
+              <View className="bg-surface-container-lowest rounded-2xl p-4 gap-2">
+                <View className="flex-row items-center gap-3">
+                  <View className="w-10 h-10 rounded-xl bg-blue-50 items-center justify-center">
+                    <Text className="text-lg">🏦</Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-bold text-on-surface">
+                      {(paymentQuery.data as any).bank_code} — {(paymentQuery.data as any).account_number}
+                    </Text>
+                    <Text className="text-xs text-on-surface-variant">
+                      {(paymentQuery.data as any).account_name}
+                    </Text>
+                  </View>
+                  <View className="px-2 py-1 rounded-lg bg-success/10">
+                    <Text className="text-[10px] font-bold text-success">VietQR ✓</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View className="bg-surface-container-lowest rounded-2xl py-6 items-center gap-1">
+                <Text className="text-2xl">💳</Text>
+                <Text className="text-sm text-on-surface-variant">Chưa cài đặt thông tin thanh toán</Text>
+                <Text className="text-xs text-on-surface-variant">Staff sẽ không thể hiện QR cho khách</Text>
+              </View>
             )}
           </View>
         )}

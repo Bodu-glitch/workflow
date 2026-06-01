@@ -1,6 +1,7 @@
 import {
   Controller, Get, Patch, Post, Put,
   Body, UseGuards, UseInterceptors, UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WorkspaceService } from './workspace.service.js';
@@ -22,6 +23,32 @@ interface CurrentUserType {
 @UseGuards(JwtAuthGuard)
 export class WorkspaceController {
   constructor(private readonly workspaceService: WorkspaceService) {}
+
+  /** GET /workspace/payment — BO + OT: read bank payment config */
+  @Get('payment')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner', 'operator')
+  getPaymentInfo(@CurrentUser() user: CurrentUserType) {
+    return this.workspaceService.getPaymentInfo(user.tenant_id);
+  }
+
+  /** PATCH /workspace/payment — BO only: set bank payment config */
+  @Patch('payment')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner')
+  updatePaymentInfo(
+    @CurrentUser() user: CurrentUserType,
+    @Body() body: { bank_code: string; account_number: string; account_name: string },
+  ) {
+    if (!body.bank_code?.trim() || !body.account_number?.trim() || !body.account_name?.trim()) {
+      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: 'Thiếu thông tin thanh toán' });
+    }
+    return this.workspaceService.updatePaymentInfo(user.tenant_id, {
+      bank_code: body.bank_code.trim().toUpperCase(),
+      account_number: body.account_number.trim(),
+      account_name: body.account_name.trim().toUpperCase(),
+    });
+  }
 
   /** GET /workspace/profile — BO + OT: read workspace info */
   @Get('profile')
