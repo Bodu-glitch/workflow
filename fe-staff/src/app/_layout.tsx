@@ -10,6 +10,7 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider } from '@/context/auth';
 import { useAuth } from '@/context/auth';
 import { LocationTracker } from '@/context/location';
+import { PoolTaskAlert } from '@/components/PoolTaskAlert';
 import { supabase } from '@/lib/supabase';
 
 const queryClient = new QueryClient({
@@ -89,6 +90,7 @@ export default function RootLayout() {
           <RootStack />
           <InvitationListener />
           <LocationTracker />
+          <PoolTaskAlert />
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

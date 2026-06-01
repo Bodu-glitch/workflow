@@ -79,4 +79,10 @@ export const meApi = {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
+
+  poolTasks: (page = 1, limit = 20) =>
+    apiFetch<PaginatedResponse<Task>>(`/me/tasks/pool?page=${page}&limit=${limit}`),
+
+  claimPoolTask: (taskId: string) =>
+    apiFetch<{ message: string; task_id: string }>(`/me/tasks/${taskId}/claim`, { method: 'POST' }),
 };

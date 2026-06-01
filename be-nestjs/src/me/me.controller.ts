@@ -68,6 +68,15 @@ export class MeController {
     return this.meService.deleteCertificate(user.id, id);
   }
 
+  /** GET /me/tasks/pool — unassigned tasks in tenant. MUST be before /me/tasks */
+  @Get('tasks/pool')
+  getPoolTasks(
+    @CurrentUser() user: CurrentUserType,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.meService.getPoolTasks(user, pagination);
+  }
+
   /** GET /me/tasks/history — MUST be before /me/tasks */
   @Get('tasks/history')
   getMyTaskHistory(
@@ -75,6 +84,15 @@ export class MeController {
     @Query() pagination: PaginationDto,
   ) {
     return this.meService.getMyTaskHistory(user, pagination);
+  }
+
+  /** POST /me/tasks/:id/claim — Staff self-assigns from pool. MUST be before /me/tasks */
+  @Post('tasks/:id/claim')
+  claimPoolTask(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.meService.claimPoolTask(id, user);
   }
 
   @Get('tasks')
