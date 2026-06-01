@@ -308,7 +308,6 @@ export default function BOEmployeeManagementScreen() {
         event: '*',
         schema: 'public',
         table: 'workspace_applications',
-        filter: `tenant_id=eq.${tenantId}`,
       }, () => {
         qc.invalidateQueries({ queryKey: ['staff-applications'] });
       })
@@ -351,6 +350,7 @@ export default function BOEmployeeManagementScreen() {
     queryFn: () => staffApi.applications(),
     select: (d) => d.data,
     refetchOnMount: 'always',
+    refetchInterval: 5000,
   });
 
   const staffProfileQuery = useQuery({
