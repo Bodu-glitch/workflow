@@ -1,6 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { haversineDistance } from '../common/utils/haversine.util.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
+
+const ACTIVE_STATUSES = ['todo', 'moving', 'arrived', 'in_progress'] as const;
 
 interface CurrentUser {
   id: string;
@@ -99,6 +102,71 @@ export class MeService {
 
     await this.supabase.db.from('user_certificates').delete().eq('id', certId);
     return { message: 'Certificate deleted' };
+  }
+
+  // ── Task status progression ─────────────────────────────────────────────────
+
+  private async getAssignedTask(taskId: string, userId: string, tenantId: string) {
+    const { data: task, error } = await this.supabase.db
+      .from('tasks')
+      .select('id, status, tenant_id, location_lat, location_lng, location_radius_m')
+      .eq('id', taskId)
+      .eq('tenant_id', tenantId)
+      .single();
+    if (error || !task) throw new NotFoundException({ code: 'TASK_NOT_FOUND', message: 'Task not found' });
+
+    const { data: assignment } = await this.supabase.db
+      .from('task_assignments')
+      .select('user_id')
+      .eq('task_id', taskId)
+      .eq('user_id', userId)
+      .single();
+    if (!assignment) throw new UnprocessableEntityException({ code: 'NOT_ASSIGNEE', message: 'Not assigned to this task' });
+
+    return task;
+  }
+
+  async startMoving(taskId: string, user: CurrentUser) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (task.status !== 'todo') {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task must be in todo status' });
+    }
+    const { error } = await this.supabase.db.from('tasks').update({ status: 'moving' }).eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+    return { status: 'moving' };
+  }
+
+  async markArrived(taskId: string, user: CurrentUser) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (task.status !== 'moving') {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task must be in moving status' });
+    }
+    const { error } = await this.supabase.db.from('tasks').update({ status: 'arrived' }).eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+    return { status: 'arrived' };
+  }
+
+  async beginWork(taskId: string, user: CurrentUser, gpsLat: number, gpsLng: number) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (task.status !== 'arrived') {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task must be in arrived status' });
+    }
+
+    // GPS verification
+    if (task.location_lat && task.location_lng) {
+      const dist = haversineDistance(task.location_lat, task.location_lng, gpsLat, gpsLng);
+      const radius = task.location_radius_m ?? 100;
+      if (dist > radius) {
+        throw new UnprocessableEntityException({
+          code: 'GPS_OUT_OF_RANGE',
+          message: `Bạn cách vị trí nhiệm vụ ${Math.round(dist)}m. Hãy đến đúng địa điểm.`,
+        });
+      }
+    }
+
+    const { error } = await this.supabase.db.from('tasks').update({ status: 'in_progress' }).eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+    return { status: 'in_progress' };
   }
 
   async getStaffProfile(staffId: string) {
@@ -273,7 +341,7 @@ export class MeService {
         .from('task_assignments')
         .select('tasks!inner(status, scheduled_at, deadline)')
         .eq('user_id', user.id)
-        .in('tasks.status', ['todo', 'in_progress']);
+        .in('tasks.status', [...ACTIVE_STATUSES]);
 
       const conflicts = (myTasks ?? []).filter((row: any) => {
         const t = row.tasks;

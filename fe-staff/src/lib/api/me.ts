@@ -85,4 +85,16 @@ export const meApi = {
 
   claimPoolTask: (taskId: string) =>
     apiFetch<{ message: string; task_id: string }>(`/me/tasks/${taskId}/claim`, { method: 'POST' }),
+
+  startMoving: (taskId: string) =>
+    apiFetch<{ status: string }>(`/me/tasks/${taskId}/start`, { method: 'POST' }),
+
+  markArrived: (taskId: string) =>
+    apiFetch<{ status: string }>(`/me/tasks/${taskId}/arrive`, { method: 'POST' }),
+
+  beginWork: (taskId: string, gpsLat: number, gpsLng: number) =>
+    apiFetch<{ status: string }>(`/me/tasks/${taskId}/begin`, {
+      method: 'POST',
+      body: JSON.stringify({ gps_lat: gpsLat, gps_lng: gpsLng }),
+    }),
 };

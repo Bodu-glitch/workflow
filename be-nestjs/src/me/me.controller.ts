@@ -86,6 +86,26 @@ export class MeController {
     return this.meService.getMyTaskHistory(user, pagination);
   }
 
+  @Post('tasks/:id/start')
+  startMoving(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.meService.startMoving(id, user);
+  }
+
+  @Post('tasks/:id/arrive')
+  markArrived(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.meService.markArrived(id, user);
+  }
+
+  @Post('tasks/:id/begin')
+  beginWork(
+    @Param('id') id: string,
+    @Body('gps_lat') gpsLat: number,
+    @Body('gps_lng') gpsLng: number,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.meService.beginWork(id, user, Number(gpsLat), Number(gpsLng));
+  }
+
   /** POST /me/tasks/:id/claim — Staff self-assigns from pool. MUST be before /me/tasks */
   @Post('tasks/:id/claim')
   claimPoolTask(
