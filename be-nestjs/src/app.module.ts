@@ -25,6 +25,7 @@ import { ChatModule } from './chat/chat.module.js';
 import { GatewayModule } from './gateway/gateway.module.js';
 import { WorkspaceModule } from './workspace/workspace.module.js';
 import { WorkScheduleModule } from './work-schedule/work-schedule.module.js';
+import { SupportModule } from './support/support.module.js';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { WorkScheduleModule } from './work-schedule/work-schedule.module.js';
     GatewayModule,
     WorkspaceModule,
     WorkScheduleModule,
+    SupportModule,
   ],
 })
 export class AppModule implements NestModule {

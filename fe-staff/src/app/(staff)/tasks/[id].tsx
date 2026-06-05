@@ -192,6 +192,16 @@ function ActionPanel({ task, onSuccess }: { task: Task; onSuccess: () => void })
     },
   });
 
+  const supportMutation = {
+    mutate: () => router.push(`/chat?pendingTaskId=${id}&pendingTaskTitle=${encodeURIComponent(task?.title ?? '')}` as any),
+    isPending: false,
+  };
+
+  async function pickPhoto() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow photo library access');
+      return;
   async function buildCheckoutForm() {
     const form = new FormData();
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -433,7 +443,21 @@ export default function StaffTaskDetailScreen() {
           </Section>
         )}
 
-        <View className="h-10" />
+        {/* Hỗ trợ */}
+        <Section title="Cần hỗ trợ?">
+          <Pressable
+            onPress={() => supportMutation.mutate()}
+            disabled={supportMutation.isPending}
+            className="py-3 rounded-xl bg-secondary-container items-center active:opacity-70 disabled:opacity-50"
+          >
+            {supportMutation.isPending
+              ? <ActivityIndicator color="#1E40AF" size="small" />
+              : <Text className="text-sm font-bold text-on-secondary-container">🆘 Yêu cầu hỗ trợ</Text>
+            }
+          </Pressable>
+        </Section>
+
+        <View className="h-8" />
       </ScrollView>
     </View>
   );
