@@ -350,9 +350,10 @@ export class StaffService {
       .select('*')
       .eq('id', id)
       .eq('tenant_id', currentUser.tenant_id)
+      .in('status', ['pending', 'expired'])
       .single();
 
-    if (!invitation) throw new NotFoundException({ code: 'INVITATION_NOT_FOUND', message: 'Invitation not found' });
+    if (!invitation) throw new NotFoundException({ code: 'INVITATION_NOT_FOUND', message: 'Invitation not found or already accepted' });
 
     // Cancel old
     await this.supabase.db.from('invitations').update({ status: 'cancelled' }).eq('id', id);
@@ -492,13 +493,14 @@ export class StaffService {
       throw new BadRequestException({ code: 'INVALID_TOKEN', message: 'Invalid invitation token' });
     }
 
-    const { error: memberError } = await this.supabase.db.from('user_tenants').insert({
+    const { error: memberError } = await this.supabase.db.from('user_tenants').upsert({
       user_id: invitation.invited_user_id,
       tenant_id: invitation.tenant_id,
       role: invitation.role,
-    });
+      is_active: true,
+    }, { onConflict: 'user_id,tenant_id' });
 
-    if (memberError && !memberError.message.includes('duplicate')) {
+    if (memberError) {
       throw new BadRequestException(memberError.message);
     }
 

@@ -90,7 +90,7 @@ function ViolationNotesModal({
     mutationFn: (noteId: string) => staffApi.deleteViolation(staff!.id, noteId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['violations', staff?.id] });
-      showToast('Đã xóa ghi chú.', 'info');
+      showToast('Đã xóa ghi chú.', 'success');
     },
     onError: (e) => showToast(e instanceof ApiError ? e.message : 'Lỗi', 'error', 'Lỗi'),
   });

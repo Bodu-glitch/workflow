@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
-import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
+import { router } from 'expo-router';
+import { ChatBell } from './ChatBell';
 
 interface AppHeaderProps {
   tenantName: string;
@@ -31,12 +32,7 @@ export function AppHeader({ tenantName, unreadCount = 0 }: AppHeaderProps) {
       </Pressable>
 
       <View className="flex-row items-center gap-1">
-        <Pressable
-          onPress={() => router.push('/chat')}
-          className="w-10 h-10 items-center justify-center active:opacity-60"
-        >
-          <Text className="text-xl">💬</Text>
-        </Pressable>
+        <ChatBell />
 
         <Pressable
           onPress={() => router.push('/notifications')}

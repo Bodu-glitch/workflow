@@ -8,6 +8,8 @@ import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 import { useAuth } from '@/context/auth';
+import { NotifBell } from '@/components/NotifBell';
+import { ChatBell } from '@/components/ChatBell';
 import type { Task, TaskStatus } from '@/types/api';
 
 const TABS: { label: string; status?: TaskStatus }[] = [
@@ -61,7 +63,7 @@ function TaskCard({ task }: { task: Task }) {
 }
 
 export default function MyTaskListScreen() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState<TaskStatus | undefined>();
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
@@ -98,13 +100,9 @@ export default function MyTaskListScreen() {
               </Text>
             </View>
           </Pressable>
-          <View className="flex-row gap-3 items-center">
-            <Pressable onPress={() => router.push('/notifications')} className="active:opacity-60">
-              <Text className="text-2xl">🔔</Text>
-            </Pressable>
-            <Pressable onPress={logout} className="w-9 h-9 items-center justify-center rounded-xl active:opacity-60">
-              <Text className="text-on-surface-variant text-lg">⎋</Text>
-            </Pressable>
+          <View className="flex-row items-center gap-1">
+            <ChatBell />
+            <NotifBell />
           </View>
         </View>
 

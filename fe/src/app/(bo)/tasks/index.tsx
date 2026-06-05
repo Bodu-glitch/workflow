@@ -123,7 +123,15 @@ export default function TaskManagerScreen() {
   return (
     <View className="flex-1 bg-surface-container-low">
       <View className="glass-effect px-5 pt-14 pb-4">
-        <Text className="text-xl font-extrabold text-on-surface tracking-tight mb-4">Tasks</Text>
+        <View className="flex-row items-center justify-between mb-4">
+          <Text className="text-xl font-extrabold text-on-surface tracking-tight">Tasks</Text>
+          <Pressable
+            onPress={() => router.push('/support-tickets' as any)}
+            className="flex-row items-center gap-1.5 px-3 py-2 rounded-full bg-surface-container-high active:opacity-70"
+          >
+            <Text className="text-xs font-bold text-on-surface">Ticket hỗ trợ</Text>
+          </Pressable>
+        </View>
         <View className="flex-row items-center bg-surface-container-high rounded-xl px-4 h-11 gap-2 mb-3">
           <Text className="text-on-surface-variant">🔍</Text>
           <TextInput

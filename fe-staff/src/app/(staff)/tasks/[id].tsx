@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { tasksApi } from '@/lib/api/tasks';
+import { supportApi } from '@/lib/api/support';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
@@ -137,6 +138,11 @@ export default function StaffTaskDetailScreen() {
     },
     onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed to reject task'),
   });
+
+  const supportMutation = {
+    mutate: () => router.push(`/chat?pendingTaskId=${id}&pendingTaskTitle=${encodeURIComponent(task?.title ?? '')}` as any),
+    isPending: false,
+  };
 
   async function pickPhoto() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -337,6 +343,20 @@ export default function StaffTaskDetailScreen() {
             )}
           </Section>
         )}
+
+        {/* Hỗ trợ */}
+        <Section title="Cần hỗ trợ?">
+          <Pressable
+            onPress={() => supportMutation.mutate()}
+            disabled={supportMutation.isPending}
+            className="py-3 rounded-xl bg-secondary-container items-center active:opacity-70 disabled:opacity-50"
+          >
+            {supportMutation.isPending
+              ? <ActivityIndicator color="#1E40AF" size="small" />
+              : <Text className="text-sm font-bold text-on-secondary-container">🆘 Yêu cầu hỗ trợ</Text>
+            }
+          </Pressable>
+        </Section>
 
         <View className="h-8" />
       </ScrollView>
