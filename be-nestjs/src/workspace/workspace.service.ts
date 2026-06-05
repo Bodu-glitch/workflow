@@ -176,4 +176,31 @@ export class WorkspaceService {
     if (error) throw new BadRequestException(error.message);
     return data;
   }
+
+  async getPaymentInfo(tenantId: string) {
+    const { data } = await this.supabase.db
+      .from('tenants')
+      .select('settings')
+      .eq('id', tenantId)
+      .single();
+    return (data?.settings as any)?.payment ?? null;
+  }
+
+  async updatePaymentInfo(tenantId: string, payment: { bank_code: string; account_number: string; account_name: string }) {
+    const { data: current } = await this.supabase.db
+      .from('tenants')
+      .select('settings')
+      .eq('id', tenantId)
+      .single();
+
+    const merged = { ...((current?.settings as any) ?? {}), payment };
+
+    const { error } = await this.supabase.db
+      .from('tenants')
+      .update({ settings: merged, updated_at: new Date().toISOString() })
+      .eq('id', tenantId);
+
+    if (error) throw new BadRequestException(error.message);
+    return payment;
+  }
 }

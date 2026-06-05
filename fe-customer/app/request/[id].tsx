@@ -11,6 +11,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { supabase } from '../../lib/supabase';
 
 function confirm(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -29,7 +30,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSocket } from '../../hooks/useSocket';
 import { StatusBadge } from '../../components/StatusBadge';
 import { api } from '../../lib/api';
-import { COLORS, STATUS_LABELS } from '../../constants/config';
+import { COLORS, STATUS_LABELS, STATUS_COLORS } from '../../constants/config';
 import type { RequestStatus } from '../../types';
 
 const CANCELLABLE: RequestStatus[] = ['unavailable', 'available', 'pending_assignment'];
@@ -55,6 +56,8 @@ export default function RequestDetailScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [confirmingPrice, setConfirmingPrice] = useState(false);
+  // Task status tracking (when BO converts request to task)
+  const [taskStatus, setTaskStatus] = useState<string | null>(null);
 
   // Join socket room and subscribe to real-time events
   useEffect(() => {
@@ -90,6 +93,35 @@ export default function RequestDetailScreen() {
       offRequote();
     };
   }, [id, joinRequestRoom, onLocationUpdate, onStatusChange, onRequote, setRequest]);
+
+  // Watch task status via Supabase Realtime when request has a linked task
+  useEffect(() => {
+    const taskId = (request as any)?.task_id;
+    if (!taskId) return;
+
+    // Set initial task status from request data
+    setTaskStatus((request as any)?.task?.status ?? null);
+
+    const channel = supabase
+      .channel(`task-status:${taskId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'tasks',
+        filter: `id=eq.${taskId}`,
+      }, (payload) => {
+        const newStatus = (payload.new as any)?.status;
+        if (newStatus) {
+          setTaskStatus(newStatus);
+          if (newStatus === 'done') {
+            setRequest((prev: any) => prev ? { ...prev, status: 'completed' } : prev);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [(request as any)?.task_id]);
 
   const handleCancel = useCallback(() => {
     confirm('Hủy yêu cầu', 'Bạn có chắc muốn hủy yêu cầu này?', async () => {
@@ -198,9 +230,18 @@ export default function RequestDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Status row */}
+        {/* Status row — show task status if available, else request status */}
         <View style={styles.statusRow}>
-          <StatusBadge status={request.status} />
+          {taskStatus ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <StatusBadge status={taskStatus} />
+              <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
+                {STATUS_LABELS[taskStatus] ?? taskStatus}
+              </Text>
+            </View>
+          ) : (
+            <StatusBadge status={request.status} />
+          )}
           {etaSeconds != null && TRACKING_ACTIVE.includes(request.status) && (
             <View style={styles.etaBadge}>
               <Text style={styles.etaIcon}>🕐</Text>

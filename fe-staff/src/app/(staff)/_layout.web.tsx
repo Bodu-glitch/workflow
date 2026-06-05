@@ -5,7 +5,6 @@ import { Text } from '@/tw';
 const TABS = [
   { name: 'Tasks',    href: '/(staff)' as const,            match: /^\/(staff)?\/?$|^\/$/ },
   { name: 'Lịch',    href: '/(staff)/schedule' as const,   match: /\/schedule/ },
-  { name: 'Dịch vụ', href: '/(staff)/jobs' as const,        match: /\/jobs/ },
   { name: 'Lịch sử', href: '/(staff)/history' as const,     match: /\/history/ },
 ];
 

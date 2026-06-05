@@ -94,9 +94,47 @@ export class TasksService {
         task_id: task.id,
         tenant_id: user.tenant_id,
       });
+    } else if (task.location_lat && task.location_lng) {
+      // No assignees + has location → pool task → notify nearby staff
+      void this.notifyNearbyPoolStaff(task);
     }
 
     return this.getTask(task.id, user);
+  }
+
+  private async notifyNearbyPoolStaff(task: { id: string; tenant_id: string; title: string; location_lat: number; location_lng: number }) {
+    const RADIUS_M = 10_000; // 10 km
+    const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // ignore stale locations > 5min
+
+    const { data: locations } = await this.supabase.db
+      .from('staff_locations')
+      .select('user_id, lat, lng')
+      .eq('tenant_id', task.tenant_id)
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false });
+
+    if (!locations || locations.length === 0) return;
+
+    // Deduplicate — only latest record per user
+    const seen = new Set<string>();
+    const nearbyIds: string[] = [];
+    for (const loc of locations) {
+      if (seen.has(loc.user_id)) continue;
+      seen.add(loc.user_id);
+      const dist = haversineDistance(task.location_lat, task.location_lng, loc.lat, loc.lng);
+      if (dist <= RADIUS_M) nearbyIds.push(loc.user_id);
+    }
+
+    if (nearbyIds.length === 0) return;
+
+    void this.notifications.sendPushNotification({
+      user_ids: nearbyIds,
+      type: 'new_pool_task',
+      title: 'Nhiệm vụ mới gần bạn',
+      body: `${task.title} – Nhấn để nhận ngay!`,
+      task_id: task.id,
+      tenant_id: task.tenant_id,
+    });
   }
 
   async listTasks(user: CurrentUser, pagination: PaginationDto, filters: {
@@ -122,7 +160,14 @@ export class TasksService {
       `, { count: 'exact' })
       .eq('tenant_id', user.tenant_id);
 
-    if (filters.status) query = query.eq('status', filters.status);
+    if (filters.status) {
+      // in_progress filter includes moving + arrived for BO/OT visibility
+      if (filters.status === 'in_progress') {
+        query = query.in('status', ['moving', 'arrived', 'in_progress']);
+      } else {
+        query = query.eq('status', filters.status);
+      }
+    }
     if (filters.priority) query = query.eq('priority', filters.priority);
     if (filters.area) query = query.eq('area', filters.area);
     if (filters.service_type) query = query.eq('service_type', filters.service_type);
@@ -174,9 +219,11 @@ export class TasksService {
     if (error) throw new BadRequestException(error.message);
 
     const now = new Date();
+    // moving + arrived tính vào in_progress cho dashboard
+    const ACTIVE_STATUSES = ['todo', 'moving', 'arrived', 'in_progress'];
     const summary: Record<string, number> = {
       todo: 0,
-      in_progress: 0,
+      in_progress: 0,  // includes moving + arrived
       done: 0,
       cancelled: 0,
       rejected: 0,
@@ -184,7 +231,8 @@ export class TasksService {
     };
 
     for (const task of data ?? []) {
-      summary[task.status] = (summary[task.status] ?? 0) + 1;
+      const bucket = ['moving', 'arrived', 'in_progress'].includes(task.status) ? 'in_progress' : task.status;
+      summary[bucket] = (summary[bucket] ?? 0) + 1;
       if (
         task.deadline &&
         new Date(task.deadline) < now &&
@@ -194,12 +242,12 @@ export class TasksService {
       }
     }
 
-    // on_task_staff = distinct staff được gán task todo/in_progress (bất kể from/to)
+    // on_task_staff = distinct staff được gán task đang active (bất kể from/to)
     const { data: activeTasks } = await this.supabase.db
       .from('tasks')
       .select('id')
       .eq('tenant_id', user.tenant_id)
-      .in('status', ['todo', 'in_progress']);
+      .in('status', ACTIVE_STATUSES);
 
     let on_task_staff = 0;
     const activeTaskIds = (activeTasks ?? []).map((t: any) => t.id);
@@ -249,8 +297,7 @@ export class TasksService {
       .eq('tenant_id', user.tenant_id)
       .gte('created_at', fromDate.toISOString());
 
-    // Overdue: deadline đã qua (< now) + status = 'todo' (chưa bắt đầu, bỏ qua deadline)
-    // Không tính in_progress vì đang có người làm
+    // Overdue: deadline đã qua (< now) + chưa hoàn thành/hủy (bao gồm mọi trạng thái active)
     const { data: overdueTasks } = await this.supabase.db
       .from('tasks')
       .select('deadline')
@@ -258,7 +305,7 @@ export class TasksService {
       .not('deadline', 'is', null)
       .gte('deadline', fromDate.toISOString())
       .lt('deadline', now.toISOString())
-      .eq('status', 'todo');
+      .in('status', ['todo', 'moving', 'arrived', 'in_progress']);
 
     const labels: string[] = [];
     const created: number[] = [];
