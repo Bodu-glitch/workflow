@@ -48,6 +48,12 @@ export const STATUS_COLORS: Record<string, string> = {
   completed: '#10B981',
   completed_late: '#F59E0B',
   cancelled: '#9CA3AF',
+  // task statuses
+  todo: '#F59E0B',
+  moving: '#3B82F6',
+  arrived: '#8B5CF6',
+  done: '#10B981',
+  rejected: '#EF4444',
 };
 
 export const CATEGORY_ICONS: Record<string, string> = {

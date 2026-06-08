@@ -82,6 +82,12 @@ export class RequestsController {
     return this.service.getRequest(id, user);
   }
 
+  /** GET /requests/:id/bill — Customer views bill + payment QR after completion */
+  @Get(':id/bill')
+  getBill(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.service.getBill(id, user);
+  }
+
   /** GET /requests/:id/matching-tenants — Customer sees matched tenants + pricing. MUST be before other /:id/* routes */
   @Get(':id/matching-tenants')
   @UseGuards(RolesGuard)

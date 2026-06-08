@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlatList, RefreshControl, ActivityIndicator, Alert } from 'react-native';
-import { router } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { meApi } from '@/lib/api/me';
 import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
@@ -11,7 +10,7 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { useAuth } from '@/context/auth';
 import { NotifBell } from '@/components/NotifBell';
 import { ChatBell } from '@/components/ChatBell';
-import type { Task, TaskStatus } from '@/types/api';
+import type { Task } from '@/types/api';
 
 type TabKey = 'pool' | 'todo' | 'active' | 'done' | 'cancelled';
 
@@ -137,7 +136,8 @@ function PoolTaskCard({ task, onClaimed }: { task: Task; onClaimed: () => void }
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function MyTaskListScreen() {
   const { user } = useAuth();
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | undefined>();
+  const qc = useQueryClient();
+  const [activeTab, setActiveTab] = useState<TabKey>('todo');
 
   const isPool = activeTab === 'pool';
   const status = isPool ? undefined : activeTab as string;

@@ -11,7 +11,6 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
-import { supabase } from '../../lib/supabase';
 
 function confirm(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -35,7 +34,8 @@ import type { RequestStatus } from '../../types';
 
 const CANCELLABLE: RequestStatus[] = ['unavailable', 'available', 'pending_assignment'];
 const RELEASABLE: RequestStatus[] = [];
-const TRACKING_ACTIVE: RequestStatus[] = ['assigned', 'in_progress'];
+// includes task statuses (moving/arrived) so the live map shows during the whole job
+const TRACKING_ACTIVE: string[] = ['assigned', 'moving', 'arrived', 'in_progress'];
 
 function formatEta(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -56,8 +56,6 @@ export default function RequestDetailScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [confirmingPrice, setConfirmingPrice] = useState(false);
-  // Task status tracking (when BO converts request to task)
-  const [taskStatus, setTaskStatus] = useState<string | null>(null);
 
   // Join socket room and subscribe to real-time events
   useEffect(() => {
@@ -77,7 +75,8 @@ export default function RequestDetailScreen() {
     const offStatus = onStatusChange((data) => {
       if (data.requestId !== id) return;
       setRequest((prev) => prev ? { ...prev, status: data.status as RequestStatus } : prev);
-      if (data.status === 'completed' || data.status === 'completed_late') {
+      // 'done' = task completed by staff; 'completed'/'completed_late' = service_request flow
+      if (data.status === 'completed' || data.status === 'completed_late' || data.status === 'done') {
         router.replace(`/rating/${id}`);
       }
     });
@@ -94,34 +93,14 @@ export default function RequestDetailScreen() {
     };
   }, [id, joinRequestRoom, onLocationUpdate, onStatusChange, onRequote, setRequest]);
 
-  // Watch task status via Supabase Realtime when request has a linked task
+  // Seed displayed status from linked task on load (request.status stays
+  // pending_assignment after task creation — the live task status comes via socket)
   useEffect(() => {
-    const taskId = (request as any)?.task_id;
-    if (!taskId) return;
-
-    // Set initial task status from request data
-    setTaskStatus((request as any)?.task?.status ?? null);
-
-    const channel = supabase
-      .channel(`task-status:${taskId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'tasks',
-        filter: `id=eq.${taskId}`,
-      }, (payload) => {
-        const newStatus = (payload.new as any)?.status;
-        if (newStatus) {
-          setTaskStatus(newStatus);
-          if (newStatus === 'done') {
-            setRequest((prev: any) => prev ? { ...prev, status: 'completed' } : prev);
-          }
-        }
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [(request as any)?.task_id]);
+    const linkedTaskStatus = (request as any)?.task?.status;
+    if (linkedTaskStatus && linkedTaskStatus !== 'todo') {
+      setRequest((prev: any) => (prev && prev.status !== linkedTaskStatus ? { ...prev, status: linkedTaskStatus } : prev));
+    }
+  }, [(request as any)?.task?.status, setRequest]);
 
   const handleCancel = useCallback(() => {
     confirm('Hủy yêu cầu', 'Bạn có chắc muốn hủy yêu cầu này?', async () => {
@@ -230,18 +209,14 @@ export default function RequestDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Status row — show task status if available, else request status */}
+        {/* Status row */}
         <View style={styles.statusRow}>
-          {taskStatus ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <StatusBadge status={taskStatus} />
-              <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                {STATUS_LABELS[taskStatus] ?? taskStatus}
-              </Text>
-            </View>
-          ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <StatusBadge status={request.status} />
-          )}
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
+              {STATUS_LABELS[request.status] ?? request.status}
+            </Text>
+          </View>
           {etaSeconds != null && TRACKING_ACTIVE.includes(request.status) && (
             <View style={styles.etaBadge}>
               <Text style={styles.etaIcon}>🕐</Text>
@@ -300,6 +275,17 @@ export default function RequestDetailScreen() {
               </View>
             )}
           </View>
+        )}
+
+        {/* Bill — available after completion */}
+        {['completed', 'completed_late', 'done'].includes(request.status) && (
+          <TouchableOpacity
+            style={styles.billBtn}
+            onPress={() => router.push(`/request/${id}/bill` as any)}
+          >
+            <Text style={styles.billBtnText}>🧾 Xem hóa đơn & thanh toán</Text>
+            <Text style={styles.billBtnArrow}>→</Text>
+          </TouchableOpacity>
         )}
 
         {/* Location */}
@@ -448,6 +434,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  billBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1.5, borderColor: COLORS.primary,
+  },
+  billBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
+  billBtnArrow: { color: COLORS.primary, fontSize: 18, fontWeight: '700' },
   cancelBtn: {
     borderRadius: 12,
     paddingVertical: 14,

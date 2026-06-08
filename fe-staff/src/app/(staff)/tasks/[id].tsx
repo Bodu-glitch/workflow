@@ -193,15 +193,10 @@ function ActionPanel({ task, onSuccess }: { task: Task; onSuccess: () => void })
   });
 
   const supportMutation = {
-    mutate: () => router.push(`/chat?pendingTaskId=${id}&pendingTaskTitle=${encodeURIComponent(task?.title ?? '')}` as any),
+    mutate: () => router.push(`/chat?pendingTaskId=${task.id}&pendingTaskTitle=${encodeURIComponent(task?.title ?? '')}` as any),
     isPending: false,
   };
 
-  async function pickPhoto() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow photo library access');
-      return;
   async function buildCheckoutForm() {
     const form = new FormData();
     const { status } = await Location.requestForegroundPermissionsAsync();

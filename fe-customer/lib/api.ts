@@ -67,4 +67,48 @@ export const api = {
 
   selectTenant: (requestId: string, tenantId: string) =>
     request<{ message: string }>('PATCH', `/requests/${requestId}/select-tenant`, { body: { tenant_id: tenantId } }),
+
+  updateProfile: (data: { full_name?: string; phone?: string }) =>
+    request<{ id: string; full_name: string; phone: string | null }>('PATCH', '/auth/profile', { body: data }),
+
+  listWorkspaces: (params: { search?: string; category?: string; page?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.search) q.set('search', params.search);
+    if (params.category) q.set('category', params.category);
+    if (params.page) q.set('page', String(params.page));
+    return request<{ data: Workspace[]; meta: { total: number; page: number; limit: number } }>(
+      'GET', `/auth/workspaces${q.toString() ? `?${q}` : ''}`,
+    );
+  },
+
+  getWorkspace: (slug: string) =>
+    request<Workspace & { services: Array<{ id: string; name: string }>; rating_avg: number | null; rating_count: number }>(
+      'GET', `/auth/workspaces/${slug}`,
+    ),
+
+  getBill: (requestId: string) =>
+    request<Bill>('GET', `/requests/${requestId}/bill`),
 };
+
+export interface Bill {
+  request_id: string;
+  tenant: { id: string; name: string; slug: string } | null;
+  items: Array<{ label: string; unit_price: number }>;
+  items_total: number;
+  total: number;
+  collected_amount: number | null;
+  payment: { bank_code: string; account_number: string; account_name: string } | null;
+  status: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  description: string | null;
+  industry: string | null;
+  operating_area: string | null;
+  benefits: string | null;
+  status: string;
+}

@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from './useAuth';
+import { useSocket } from './useSocket';
 import type { ServiceRequest, CategoryMatch } from '../types';
 
 export function useRequests() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  const { onStatusChange } = useSocket(token);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,18 @@ export function useRequests() {
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
+
+  // Real-time status updates from server via customerRoom
+  useEffect(() => {
+    const off = onStatusChange((data) => {
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === data.requestId ? { ...r, status: data.status as ServiceRequest['status'] } : r,
+        ),
+      );
+    });
+    return off;
+  }, [onStatusChange]);
 
   return { requests, loading, error, refresh: fetchRequests };
 }

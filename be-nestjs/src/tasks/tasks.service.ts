@@ -15,6 +15,7 @@ import { CheckinDto } from './dto/checkin.dto.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 import { haversineDistance } from '../common/utils/haversine.util.js';
 import { ConfigService } from '@nestjs/config';
+import { EventsGateway } from '../gateway/events.gateway.js';
 
 interface CurrentUser {
   id: string;
@@ -28,6 +29,7 @@ export class TasksService {
     private supabase: SupabaseService,
     private notifications: NotificationsService,
     private config: ConfigService,
+    private gateway: EventsGateway,
   ) {}
 
   private transformTask(raw: any) {
@@ -603,6 +605,23 @@ export class TasksService {
     // Update task status
     const newStatus = type === 'checkin' ? 'in_progress' : 'done';
     await this.supabase.db.from('tasks').update({ status: newStatus }).eq('id', taskId);
+
+    // Notify customer via socket if this task is linked to a service_request
+    const { data: linkedReq } = await this.supabase.db
+      .from('service_requests')
+      .select('id')
+      .eq('task_id', taskId)
+      .maybeSingle();
+    if (linkedReq?.id) {
+      this.gateway.emitRequestStatusChanged(linkedReq.id, newStatus);
+      // When task done, also mark the service_request completed
+      if (newStatus === 'done') {
+        await this.supabase.db
+          .from('service_requests')
+          .update({ status: 'completed', completed_at: new Date().toISOString() })
+          .eq('id', linkedReq.id);
+      }
+    }
 
     // Auto-update online_status
     if (type === 'checkin') {

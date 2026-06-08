@@ -35,11 +35,21 @@ export default function HistoryScreen() {
         </View>
         <StatusBadge status={item.status} />
       </View>
-      {item.agreed_price && (
-        <Text style={styles.price}>
-          {item.agreed_price.toLocaleString('vi-VN')}₫
-        </Text>
-      )}
+      <View style={styles.cardFooter}>
+        {item.agreed_price ? (
+          <Text style={styles.price}>
+            {item.agreed_price.toLocaleString('vi-VN')}₫
+          </Text>
+        ) : <View />}
+        {(item.status === 'completed' || item.status === 'completed_late') && (
+          <TouchableOpacity
+            onPress={() => router.push(`/request/${item.id}/bill` as any)}
+            hitSlop={8}
+          >
+            <Text style={styles.billLink}>🧾 Hóa đơn</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </TouchableOpacity>
   );
 
@@ -84,6 +94,8 @@ const styles = StyleSheet.create({
   description: { fontSize: 14, color: COLORS.text, fontWeight: '500' },
   date: { fontSize: 12, color: COLORS.textSecondary },
   price: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  billLink: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 12 },
   emptyIcon: { fontSize: 48 },
   emptyText: { fontSize: 15, color: COLORS.textSecondary },
