@@ -30,6 +30,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="search"
+        options={{
+          title: 'Khám phá',
+          tabBarIcon: ({ color, size }) => (
+            <TabIcon icon="🔍" color={color} size={size} />
+          ),
+          headerTitle: 'Tìm kiếm dịch vụ',
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
           title: 'Lịch sử',

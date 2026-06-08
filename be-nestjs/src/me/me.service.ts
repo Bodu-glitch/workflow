@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { haversineDistance } from '../common/utils/haversine.util.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 
@@ -12,7 +13,22 @@ interface CurrentUser {
 
 @Injectable()
 export class MeService {
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    private gateway: EventsGateway,
+  ) {}
+
+  /** Emit socket event to customer tracking a request linked to this task */
+  private async notifyCustomerTaskStatus(taskId: string, taskStatus: string) {
+    const { data: req } = await this.supabase.db
+      .from('service_requests')
+      .select('id')
+      .eq('task_id', taskId)
+      .maybeSingle();
+    if (req?.id) {
+      this.gateway.emitRequestStatusChanged(req.id, taskStatus);
+    }
+  }
 
   async getProfile(userId: string, tenantId?: string) {
     const { data, error } = await this.supabase.db
@@ -184,6 +200,7 @@ export class MeService {
     }
     const { error } = await this.supabase.db.from('tasks').update({ status: 'moving' }).eq('id', taskId);
     if (error) throw new BadRequestException(error.message);
+    void this.notifyCustomerTaskStatus(taskId, 'moving');
     return { status: 'moving' };
   }
 
@@ -194,6 +211,7 @@ export class MeService {
     }
     const { error } = await this.supabase.db.from('tasks').update({ status: 'arrived' }).eq('id', taskId);
     if (error) throw new BadRequestException(error.message);
+    void this.notifyCustomerTaskStatus(taskId, 'arrived');
     return { status: 'arrived' };
   }
 
@@ -217,6 +235,7 @@ export class MeService {
 
     const { error } = await this.supabase.db.from('tasks').update({ status: 'in_progress' }).eq('id', taskId);
     if (error) throw new BadRequestException(error.message);
+    void this.notifyCustomerTaskStatus(taskId, 'in_progress');
     return { status: 'in_progress' };
   }
 

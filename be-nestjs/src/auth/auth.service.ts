@@ -284,4 +284,79 @@ export class AuthService {
       .eq('id', userId);
     return { message: 'Device token updated' };
   }
+
+  async updateCustomerProfile(userId: string, dto: { full_name?: string; phone?: string }) {
+    const update: Record<string, any> = {};
+    if (dto.full_name?.trim()) update.full_name = dto.full_name.trim();
+    if (dto.phone !== undefined) update.phone = dto.phone.trim() || null;
+
+    const { data, error } = await this.supabase.db
+      .from('users')
+      .update(update)
+      .eq('id', userId)
+      .select('id, email, full_name, phone, avatar_url, role')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  // Public workspace listing for customer app
+  async listPublicWorkspaces(params: {
+    search?: string;
+    category?: string;
+    lat?: number;
+    lng?: number;
+    page?: number;
+    limit?: number;
+  }) {
+    const { page = 1, limit = 20, search, category } = params;
+    const offset = (page - 1) * limit;
+
+    let query = this.supabase.db
+      .from('tenants')
+      .select(`
+        id, name, slug, logo_url, description, industry, operating_area,
+        benefits, income_level, status
+      `, { count: 'exact' })
+      .eq('status', 'active')
+      .range(offset, offset + limit - 1)
+      .order('name');
+
+    if (search) query = query.ilike('name', `%${search}%`);
+    if (category) query = query.ilike('industry', `%${category}%`);
+
+    const { data, count, error } = await query;
+    if (error) throw new BadRequestException(error.message);
+    return { data: data ?? [], meta: { total: count, page, limit } };
+  }
+
+  async getPublicWorkspace(slug: string) {
+    const { data: tenant, error } = await this.supabase.db
+      .from('tenants')
+      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, status')
+      .eq('slug', slug)
+      .eq('status', 'active')
+      .single();
+
+    if (error || !tenant) throw new NotFoundException({ code: 'NOT_FOUND', message: 'Workspace not found' });
+
+    // Get services
+    const { data: services } = await this.supabase.db
+      .from('tenant_services')
+      .select('id, name')
+      .eq('tenant_id', tenant.id);
+
+    // Get average rating
+    const { data: ratings } = await this.supabase.db
+      .from('ratings')
+      .select('score')
+      .eq('tenant_id', tenant.id);
+
+    const avgRating = ratings && ratings.length > 0
+      ? ratings.reduce((s: number, r: any) => s + r.score, 0) / ratings.length
+      : null;
+
+    return { ...tenant, services: services ?? [], rating_avg: avgRating, rating_count: ratings?.length ?? 0 };
+  }
 }
