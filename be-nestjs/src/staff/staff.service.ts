@@ -222,6 +222,8 @@ export class StaffService {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
 
+    const today = new Date().toISOString().split('T')[0];
+
     const { data, count, error } = await this.supabase.db
       .from('user_tenants')
       .select(
@@ -237,6 +239,21 @@ export class StaffService {
 
     if (error) throw new BadRequestException(error.message);
 
+    // Lấy danh sách user_id đang nghỉ phép hôm nay
+    const userIds = (data ?? []).map((row: any) => row.users.id);
+    let onLeaveIds = new Set<string>();
+    if (userIds.length > 0) {
+      const { data: leaves } = await this.supabase.db
+        .from('leave_requests')
+        .select('user_id')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'approved')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .in('user_id', userIds);
+      onLeaveIds = new Set((leaves ?? []).map((l: any) => l.user_id));
+    }
+
     const normalized = (data ?? []).map((row: any) => ({
       id: row.users.id,
       email: row.users.email,
@@ -249,6 +266,7 @@ export class StaffService {
       online_status: row.online_status ?? 'offline',
       lock_reason: row.lock_reason ?? null,
       created_at: row.created_at,
+      is_on_leave: onLeaveIds.has(row.users.id),
     }));
 
     return { data: normalized, meta: { total: count, page, limit } };

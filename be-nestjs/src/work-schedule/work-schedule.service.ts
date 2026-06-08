@@ -158,19 +158,6 @@ export class WorkScheduleService {
         message: 'Đơn nghỉ phép không tồn tại hoặc đã được xử lý',
       });
 
-    // Đơn nghỉ được duyệt và hôm nay nằm trong khoảng nghỉ → set offline
-    if (dto.action === 'approved') {
-      const today = new Date().toISOString().split('T')[0];
-      if (today >= data.start_date && today <= data.end_date) {
-        await this.supabase.db
-          .from('user_tenants')
-          .update({ online_status: 'offline' })
-          .eq('user_id', data.user_id)
-          .eq('tenant_id', tenantId)
-          .neq('online_status', 'working'); // không ghi đè nếu đang làm task
-      }
-    }
-
     this.gateway.emitScheduleUpdated(data.user_id);
     this.gateway.emitTenantScheduleUpdated(tenantId);
 
