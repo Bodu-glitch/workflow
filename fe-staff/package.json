@@ -25,6 +25,7 @@
     "expo": "~55.0.7",
     "expo-auth-session": "~55.0.9",
     "expo-constants": "~55.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-crypto": "~55.0.10",
     "expo-dev-client": "~55.0.18",
     "expo-device": "~55.0.10",

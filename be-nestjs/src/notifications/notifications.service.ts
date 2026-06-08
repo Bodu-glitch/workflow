@@ -26,6 +26,7 @@ export class NotificationsService {
       tenant_id: payload.tenant_id ?? null,
       user_id: userId,
       task_id: payload.task_id ?? null,
+      request_id: payload.request_id ?? null,
       type: payload.type,
       title: payload.title,
       body: payload.body,

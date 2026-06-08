@@ -52,6 +52,14 @@
         {
           "locationWhenInUsePermission": "Ứng dụng cần vị trí của bạn để nhận nhiệm vụ gần bạn."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#1E40AF",
+          "sounds": []
+        }
       ]
     ],
     "experiments": {

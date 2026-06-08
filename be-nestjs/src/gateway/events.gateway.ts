@@ -205,11 +205,20 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // Public methods for other services to broadcast events
   emitRequestStatusChanged(requestId: string, status: string) {
-    this.server.to(requestRoom(requestId)).emit(WS_EVENTS.REQUEST_STATUS_CHANGED, {
-      requestId,
-      status,
-      timestamp: new Date().toISOString(),
-    });
+    const payload = { requestId, status, timestamp: new Date().toISOString() };
+    this.server.to(requestRoom(requestId)).emit(WS_EVENTS.REQUEST_STATUS_CHANGED, payload);
+
+    // Also notify the customer directly so Home screen updates in real-time
+    void this.supabase.db
+      .from('service_requests')
+      .select('customer_id')
+      .eq('id', requestId)
+      .single()
+      .then(({ data }) => {
+        if (data?.customer_id) {
+          this.server.to(customerRoom(data.customer_id)).emit(WS_EVENTS.REQUEST_STATUS_CHANGED, payload);
+        }
+      });
   }
 
   emitStaffAssigned(requestId: string, staff: Record<string, any>) {
