@@ -85,7 +85,21 @@ export const api = {
     request<Workspace & { services: Array<{ id: string; name: string }>; rating_avg: number | null; rating_count: number }>(
       'GET', `/auth/workspaces/${slug}`,
     ),
+
+  getBill: (requestId: string) =>
+    request<Bill>('GET', `/requests/${requestId}/bill`),
 };
+
+export interface Bill {
+  request_id: string;
+  tenant: { id: string; name: string; slug: string } | null;
+  items: Array<{ label: string; unit_price: number }>;
+  items_total: number;
+  total: number;
+  collected_amount: number | null;
+  payment: { bank_code: string; account_number: string; account_name: string } | null;
+  status: string;
+}
 
 export interface Workspace {
   id: string;

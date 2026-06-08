@@ -573,6 +573,61 @@ export class RequestsService {
     }
   }
 
+  // Customer: view bill + payment QR after task completion
+  async getBill(requestId: string, user: CurrentUser) {
+    const request = await this.getRequest(requestId, user);
+
+    const taskId = (request as any).task_id;
+    const taskStatus = (request as any).task?.status;
+    const isCompleted = taskStatus === 'done'
+      || ['completed', 'completed_late'].includes(request.status);
+
+    if (!isCompleted) {
+      throw new UnprocessableEntityException({
+        code: 'BILL_NOT_READY',
+        message: 'Hóa đơn sẽ có sau khi nhân viên hoàn thành công việc.',
+      });
+    }
+
+    // Service items from the linked task
+    let items: Array<{ label: string; unit_price: number }> = [];
+    if (taskId) {
+      const { data: serviceItems } = await this.supabase.db
+        .from('task_service_items')
+        .select('label, unit_price, checked')
+        .eq('task_id', taskId)
+        .eq('checked', true)
+        .order('created_at');
+      items = (serviceItems ?? []).map((i: any) => ({ label: i.label, unit_price: Number(i.unit_price) || 0 }));
+    }
+
+    const itemsTotal = items.reduce((s, i) => s + i.unit_price, 0);
+    // Prefer the actual collected/agreed amount if set, else the checklist total
+    const total = request.collected_amount ?? request.agreed_price ?? itemsTotal;
+
+    // Tenant bank payment info for VietQR
+    let payment: { bank_code: string; account_number: string; account_name: string } | null = null;
+    if (request.tenant_id) {
+      const { data: tenant } = await this.supabase.db
+        .from('tenants')
+        .select('settings')
+        .eq('id', request.tenant_id)
+        .single();
+      payment = (tenant?.settings as any)?.payment ?? null;
+    }
+
+    return {
+      request_id: requestId,
+      tenant: request.tenant,
+      items,
+      items_total: itemsTotal,
+      total,
+      collected_amount: request.collected_amount ?? null,
+      payment,
+      status: taskStatus ?? request.status,
+    };
+  }
+
   // BO/OT: convert a customer service_request into a pool task
   async createTaskFromRequest(requestId: string, user: CurrentUser) {
     const { data: req, error: reqErr } = await this.supabase.db

@@ -277,6 +277,17 @@ export default function RequestDetailScreen() {
           </View>
         )}
 
+        {/* Bill — available after completion */}
+        {['completed', 'completed_late', 'done'].includes(request.status) && (
+          <TouchableOpacity
+            style={styles.billBtn}
+            onPress={() => router.push(`/request/${id}/bill` as any)}
+          >
+            <Text style={styles.billBtnText}>🧾 Xem hóa đơn & thanh toán</Text>
+            <Text style={styles.billBtnArrow}>→</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Location */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Địa điểm</Text>
@@ -423,6 +434,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  billBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1.5, borderColor: COLORS.primary,
+  },
+  billBtnText: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
+  billBtnArrow: { color: COLORS.primary, fontSize: 18, fontWeight: '700' },
   cancelBtn: {
     borderRadius: 12,
     paddingVertical: 14,
