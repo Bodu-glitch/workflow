@@ -87,17 +87,6 @@ export class WorkScheduleService {
       );
     if (error) throw new BadRequestException(error.message);
 
-    // Nếu phân ca cho hôm nay → set online (không ghi đè nếu đang working)
-    const today = new Date().toISOString().split('T')[0];
-    if (dto.work_date === today) {
-      await this.supabase.db
-        .from('user_tenants')
-        .update({ online_status: 'online' })
-        .in('user_id', dto.user_ids)
-        .eq('tenant_id', tenantId)
-        .neq('online_status', 'working');
-    }
-
     for (const userId of dto.user_ids) {
       this.gateway.emitScheduleUpdated(userId);
     }
@@ -121,28 +110,6 @@ export class WorkScheduleService {
       .eq('id', id)
       .eq('tenant_id', tenantId);
     if (error) throw new BadRequestException(error.message);
-
-    // Nếu xóa ca của hôm nay và không còn ca nào khác → set offline
-    if (assignment) {
-      const today = new Date().toISOString().split('T')[0];
-      if (assignment.work_date === today) {
-        const { data: remaining } = await this.supabase.db
-          .from('shift_assignments')
-          .select('id')
-          .eq('user_id', assignment.user_id)
-          .eq('tenant_id', tenantId)
-          .eq('work_date', today);
-        if ((remaining?.length ?? 0) === 0) {
-          // Chỉ revert từ 'online' → 'offline', không đụng đến 'working'
-          await this.supabase.db
-            .from('user_tenants')
-            .update({ online_status: 'offline' })
-            .eq('user_id', assignment.user_id)
-            .eq('tenant_id', tenantId)
-            .eq('online_status', 'online');
-        }
-      }
-    }
 
     if (assignment?.user_id) {
       this.gateway.emitScheduleUpdated(assignment.user_id);
