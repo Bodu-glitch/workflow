@@ -160,6 +160,7 @@ export class WorkScheduleService {
 
     this.gateway.emitScheduleUpdated(data.user_id);
     this.gateway.emitTenantScheduleUpdated(tenantId);
+    this.gateway.emitStaffUpdated(tenantId);
 
     return data;
   }
@@ -197,6 +198,7 @@ export class WorkScheduleService {
       .select()
       .single();
     if (error) throw new BadRequestException(error.message);
+    this.gateway.emitTenantScheduleUpdated(tenantId);
     return data;
   }
 }

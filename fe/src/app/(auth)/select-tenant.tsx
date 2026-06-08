@@ -78,6 +78,8 @@ export default function SelectTenantScreen() {
 
   if (!pendingSelection) return null;
 
+  const managedTenants = pendingSelection.tenants.filter(t => t.role === 'business_owner' || t.role === 'operator');
+
   return (
     <View className="flex-1 bg-surface">
       {/* Glass header */}
@@ -88,17 +90,17 @@ export default function SelectTenantScreen() {
       {/* Title */}
       <View className="px-6 pt-8 pb-6">
         <Text className="text-3xl font-extrabold tracking-tight text-on-surface mb-2">
-          {pendingSelection.tenants.length === 0 ? 'Create Workspace' : 'Select Workspace'}
+          {managedTenants.length === 0 ? 'Create Workspace' : 'Select Workspace'}
         </Text>
         <Text className="text-on-surface-variant">
-          {pendingSelection.tenants.length === 0
+          {managedTenants.length === 0
             ? 'Set up your workspace to get started.'
             : 'Welcome back. Choose an organization to continue your session.'}
         </Text>
       </View>
 
       <ScrollView className="flex-1 px-6" contentContainerClassName="gap-4 pb-6">
-        {pendingSelection.tenants.map((tenant) => (
+        {managedTenants.map((tenant) => (
           <Pressable
             key={tenant.id}
             onPress={() => handleSelect(tenant)}
@@ -124,7 +126,7 @@ export default function SelectTenantScreen() {
         {/* Create new workspace */}
         <View className="mt-2 pt-4 border-t border-outline-variant gap-3">
           <Text className="text-sm font-semibold text-on-surface-variant">
-            {pendingSelection.tenants.length === 0
+            {managedTenants.length === 0
               ? 'No workspaces yet. Create one to get started.'
               : 'Or create a new workspace'}
           </Text>

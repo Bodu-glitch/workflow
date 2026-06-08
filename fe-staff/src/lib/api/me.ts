@@ -83,6 +83,12 @@ export const meApi = {
     return json;
   },
 
+  updateOnlineStatus: (status: OnlineStatus) =>
+    apiFetch<{ message: string }>('/staff/me/online-status', {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
   leaveWorkspace: (reason?: string) =>
     apiFetch<{ message: string }>('/me/leave-workspace', {
       method: 'POST',
@@ -120,5 +126,11 @@ export const meApi = {
     apiFetch<{ status: string }>(`/me/tasks/${taskId}/begin`, {
       method: 'POST',
       body: JSON.stringify({ gps_lat: gpsLat, gps_lng: gpsLng }),
+    }),
+
+  rejectTask: (taskId: string, reason: string) =>
+    apiFetch<{ status: string }>(`/me/tasks/${taskId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     }),
 };

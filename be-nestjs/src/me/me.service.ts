@@ -239,6 +239,30 @@ export class MeService {
     return { status: 'in_progress' };
   }
 
+  async rejectTask(taskId: string, reason: string, user: CurrentUser) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (!['todo', 'moving', 'arrived'].includes(task.status)) {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task cannot be rejected in its current status' });
+    }
+
+    const { error } = await this.supabase.db
+      .from('tasks')
+      .update({ status: 'rejected', cancel_reason: reason })
+      .eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+
+    await this.supabase.db.from('audit_logs').insert({
+      tenant_id: task.tenant_id,
+      task_id: taskId,
+      user_id: user.id,
+      action: 'task_rejected',
+      metadata: { reason },
+    });
+
+    void this.notifyCustomerTaskStatus(taskId, 'rejected');
+    return { status: 'rejected' };
+  }
+
   async getStaffProfile(staffId: string) {
     const { data, error } = await this.supabase.db
       .from('users')
@@ -318,6 +342,8 @@ export class MeService {
       action: 'member_removed',
       metadata: { removed_user_id: userId, reason: reason ?? null, self_leave: true },
     });
+
+    this.gateway.emitStaffUpdated(tenantId);
 
     return { message: 'Left workspace successfully' };
   }
