@@ -222,7 +222,10 @@ export class StaffService {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
 
-    const today = new Date().toISOString().split('T')[0];
+    // Dùng UTC+7 (Vietnam) cho cả ngày lẫn giờ
+    const nowVN = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const today = nowVN.toISOString().split('T')[0];
+    const currentTime = nowVN.toISOString().split('T')[1].substring(0, 5); // 'HH:MM'
 
     const { data, count, error } = await this.supabase.db
       .from('user_tenants')
@@ -239,10 +242,12 @@ export class StaffService {
 
     if (error) throw new BadRequestException(error.message);
 
-    // Lấy danh sách user_id đang nghỉ phép hôm nay
     const userIds = (data ?? []).map((row: any) => row.users.id);
     let onLeaveIds = new Set<string>();
+    let lateIds = new Set<string>();
+
     if (userIds.length > 0) {
+      // Nghỉ phép hôm nay
       const { data: leaves } = await this.supabase.db
         .from('leave_requests')
         .select('user_id')
@@ -252,6 +257,19 @@ export class StaffService {
         .gte('end_date', today)
         .in('user_id', userIds);
       onLeaveIds = new Set((leaves ?? []).map((l: any) => l.user_id));
+
+      // Ca hôm nay đã bắt đầu nhưng nhân viên vẫn offline
+      const { data: shifts } = await this.supabase.db
+        .from('shift_assignments')
+        .select('user_id, work_shifts!shift_id(start_time)')
+        .eq('tenant_id', tenantId)
+        .eq('work_date', today)
+        .in('user_id', userIds);
+
+      const startedUserIds = (shifts ?? [])
+        .filter((s: any) => (s.work_shifts?.start_time ?? '99:99') <= currentTime)
+        .map((s: any) => s.user_id);
+      lateIds = new Set(startedUserIds);
     }
 
     const normalized = (data ?? []).map((row: any) => ({
@@ -267,6 +285,7 @@ export class StaffService {
       lock_reason: row.lock_reason ?? null,
       created_at: row.created_at,
       is_on_leave: onLeaveIds.has(row.users.id),
+      is_late: lateIds.has(row.users.id) && (row.online_status ?? 'offline') === 'offline' && !onLeaveIds.has(row.users.id),
     }));
 
     return { data: normalized, meta: { total: count, page, limit } };

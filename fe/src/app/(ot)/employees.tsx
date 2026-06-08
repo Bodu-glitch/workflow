@@ -20,6 +20,7 @@ function getDisplayStatus(s: StaffMember): StaffDisplayStatus {
   if (!s.is_active) return 'locked';
   if (s.online_status === 'working') return 'working';
   if (s.is_on_leave) return 'on_leave';
+  if (s.is_late) return 'late';
   if (s.online_status === 'online') return 'online';
   return 'offline';
 }
@@ -27,17 +28,19 @@ function getDisplayStatus(s: StaffMember): StaffDisplayStatus {
 const STATUS_CONFIG: Record<StaffDisplayStatus, {
   label: string; dot: string; bg: string; color: string; icon: string;
 }> = {
-  online:   { label: 'Online',      dot: '#16a34a', bg: '#dcfce7', color: '#15803d', icon: '🟢' },
-  working:  { label: 'Đang làm',   dot: '#2563eb', bg: '#dbeafe', color: '#1d4ed8', icon: '🔵' },
-  offline:  { label: 'Offline',     dot: '#9ca3af', bg: '#f3f4f6', color: '#6b7280', icon: '⚪' },
-  locked:   { label: 'Bị khóa',    dot: '#dc2626', bg: '#fee2e2', color: '#dc2626', icon: '🔒' },
-  on_leave: { label: 'Nghỉ phép',  dot: '#d97706', bg: '#fef3c7', color: '#b45309', icon: '🏖️' },
+  online:   { label: 'Online',        dot: '#16a34a', bg: '#dcfce7', color: '#15803d', icon: '🟢' },
+  working:  { label: 'Đang làm',     dot: '#2563eb', bg: '#dbeafe', color: '#1d4ed8', icon: '🔵' },
+  offline:  { label: 'Offline',       dot: '#9ca3af', bg: '#f3f4f6', color: '#6b7280', icon: '⚪' },
+  locked:   { label: 'Bị khóa',      dot: '#dc2626', bg: '#fee2e2', color: '#dc2626', icon: '🔒' },
+  on_leave: { label: 'Nghỉ phép',    dot: '#d97706', bg: '#fef3c7', color: '#b45309', icon: '🏖️' },
+  late:     { label: 'Chưa vào ca',  dot: '#dc2626', bg: '#fee2e2', color: '#dc2626', icon: '🔴' },
 };
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'all',      label: 'Tất cả' },
   { key: 'online',   label: '🟢 Online' },
   { key: 'working',  label: '🔵 Đang làm' },
+  { key: 'late',     label: '🔴 Chưa vào ca' },
   { key: 'on_leave', label: '🏖️ Nghỉ phép' },
   { key: 'offline',  label: '⚪ Offline' },
   { key: 'locked',   label: '🔒 Bị khóa' },
@@ -159,7 +162,7 @@ export default function OTEmployeeManagementScreen() {
 
   const statusCounts = allStaff.reduce<Record<StaffDisplayStatus, number>>(
     (acc, s) => { acc[getDisplayStatus(s)]++; return acc; },
-    { online: 0, working: 0, offline: 0, locked: 0, on_leave: 0 },
+    { online: 0, working: 0, offline: 0, locked: 0, on_leave: 0, late: 0 },
   );
 
   const filteredStaff = statusFilter === 'all'

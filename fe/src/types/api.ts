@@ -112,6 +112,7 @@ export interface StaffMember {
   lock_reason?: string | null;
   created_at: string;
   is_on_leave: boolean;
+  is_late: boolean;
 }
 
 export interface ViolationNote {
@@ -124,8 +125,8 @@ export interface ViolationNote {
   users?: { id: string; full_name: string };
 }
 
-/** Computed display status for UI — derived from is_active + online_status + is_on_leave */
-export type StaffDisplayStatus = 'online' | 'working' | 'offline' | 'locked' | 'on_leave';
+/** Computed display status for UI — derived from is_active + online_status + is_on_leave + is_late */
+export type StaffDisplayStatus = 'online' | 'working' | 'offline' | 'locked' | 'on_leave' | 'late';
 
 export interface Invitation {
   id: string;
