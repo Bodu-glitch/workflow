@@ -3,9 +3,10 @@ import { StaffController } from './staff.controller.js';
 import { StaffService } from './staff.service.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
+import { GatewayModule } from '../gateway/gateway.module.js';
 
 @Module({
-  imports: [AuthModule, NotificationsModule],
+  imports: [AuthModule, NotificationsModule, GatewayModule],
   controllers: [StaffController],
   providers: [StaffService],
 })

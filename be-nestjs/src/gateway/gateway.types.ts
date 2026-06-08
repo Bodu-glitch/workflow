@@ -4,6 +4,7 @@ export const WS_EVENTS = {
   CHAT_SEND: 'chat:send',
   JOIN_REQUEST: 'join:request',
   PING: 'ping',
+  STAFF_CHAT_SEND: 'staff_chat:send',
 
   // Server → Client
   REQUEST_STATUS_CHANGED: 'request:status_changed',
@@ -15,6 +16,11 @@ export const WS_EVENTS = {
   JOB_ASSIGNED: 'job:assigned',
   JOB_CANCELLED: 'job:cancelled',
   STAFF_POOL_UPDATED: 'staff:pool_updated',
+  NOTIFICATION_NEW: 'notification:new',
+  SCHEDULE_UPDATED: 'schedule:updated',
+  STAFF_CHAT_MESSAGE: 'staff_chat:message',
+  APPLICATION_UPDATED: 'application:updated',
+  STAFF_UPDATED: 'staff:updated',
   ERROR: 'error',
   PONG: 'pong',
 } as const;
@@ -33,6 +39,10 @@ export function chatRoom(requestId: string, channel: string) {
 
 export function tenantPoolRoom(tenantId: string) {
   return `tenant:${tenantId}:pool`;
+}
+
+export function tenantStaffRoom(tenantId: string) {
+  return `tenant:${tenantId}:staff`;
 }
 
 export function staffRoom(userId: string) {

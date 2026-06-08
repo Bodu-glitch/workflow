@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
 import { ReplyTicketDto } from './dto/reply-ticket.dto.js';
 
@@ -16,6 +17,7 @@ export class SupportService {
   constructor(
     private supabase: SupabaseService,
     private notifications: NotificationsService,
+    private gateway: EventsGateway,
   ) {}
 
   async createTicket(dto: CreateTicketDto, user: CurrentUser) {
@@ -53,7 +55,7 @@ export class SupportService {
     if (ticketError) throw new BadRequestException(ticketError.message);
 
     // Post task_card message to chat (content = staff description)
-    const { error: msgError } = await this.supabase.db
+    const { data: chatMsg, error: msgError } = await this.supabase.db
       .from('chat_messages')
       .insert({
         tenant_id: user.tenant_id,
@@ -62,9 +64,12 @@ export class SupportService {
         task_id: dto.task_id,
         ticket_id: ticket.id,
         content: dto.description,
-      });
+      })
+      .select('id, user_id, content, type, task_id, ticket_id, created_at, tenant_id')
+      .single();
 
     if (msgError) throw new BadRequestException(msgError.message);
+    if (chatMsg) this.gateway.emitStaffChatMessage(user.tenant_id, chatMsg);
 
     return { ticket, task };
   }
@@ -134,6 +139,7 @@ export class SupportService {
       .single();
 
     if (msgError) throw new BadRequestException(msgError.message);
+    if (message) this.gateway.emitStaffChatMessage(user.tenant_id, message);
 
     // Update ticket status to in_progress if still open
     if (ticket.status === 'open') {

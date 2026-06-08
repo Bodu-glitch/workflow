@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { useAuth } from '@/context/auth';
 import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 import { supportApi } from '@/lib/api/support';
 import { markChatAsRead } from '@/components/ChatBell';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -255,6 +256,7 @@ function ReplyBubble({ msg, isOwn, isRequest }: { msg: ChatMessage; isOwn: boole
 
 export default function ChatScreen() {
   const { user, role } = useAuth();
+  const socket = useSocketContext();
   const tenantId = user?.tenant_id;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -295,45 +297,26 @@ export default function ChatScreen() {
   }, [loadMessages]);
 
   useEffect(() => {
-    if (!tenantId) return;
-    const channel = supabase
-      .channel(`chat:${tenantId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `tenant_id=eq.${tenantId}` },
-        async (payload) => {
-          const { data } = await supabase
-            .from('chat_messages')
-            .select('id, user_id, content, type, task_id, ticket_id, created_at, users!chat_messages_user_id_fkey(full_name)')
-            .eq('id', payload.new.id)
-            .single();
-          if (data) {
-            setMessages((prev) => {
-              // Deduplicate: skip if already present (optimistic insert)
-              if (prev.some((m) => m.id === (data as any).id)) return prev;
-              return [...prev, transformRow(data)];
-            });
-          }
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [tenantId]);
+    if (!socket || !tenantId) return;
+
+    const handler = (msg: any) => {
+      if (msg?.tenant_id !== tenantId) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, transformRow(msg)];
+      });
+    };
+
+    socket.on('staff_chat:message', handler);
+    return () => { socket.off('staff_chat:message', handler); };
+  }, [socket, tenantId]);
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || !tenantId || sending) return;
+    if (!text || !tenantId || sending || !socket) return;
     setInput('');
     setSending(true);
-    const { error } = await supabase.from('chat_messages').insert({
-      tenant_id: tenantId,
-      user_id: user!.id,
-      content: text,
-    });
-    if (error) {
-      setInput(text);
-      console.error('[Chat] insert error:', error.message, error.code);
-    }
+    socket.emit('staff_chat:send', { content: text, type: 'text' });
     setSending(false);
   };
 

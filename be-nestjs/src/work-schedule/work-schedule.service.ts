@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { CreateShiftDto } from './dto/create-shift.dto.js';
 import { AssignShiftDto } from './dto/assign-shift.dto.js';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto.js';
@@ -12,7 +13,10 @@ import { ReviewLeaveRequestDto } from './dto/review-leave-request.dto.js';
  */
 @Injectable()
 export class WorkScheduleService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly gateway: EventsGateway,
+  ) {}
 
   // ── Shifts ──────────────────────────────────────────────────────────────
 
@@ -94,6 +98,11 @@ export class WorkScheduleService {
         .neq('online_status', 'working');
     }
 
+    for (const userId of dto.user_ids) {
+      this.gateway.emitScheduleUpdated(userId);
+    }
+    this.gateway.emitTenantScheduleUpdated(tenantId);
+
     return data; // interceptor → { data: ShiftAssignment[] }
   }
 
@@ -134,6 +143,11 @@ export class WorkScheduleService {
         }
       }
     }
+
+    if (assignment?.user_id) {
+      this.gateway.emitScheduleUpdated(assignment.user_id);
+    }
+    this.gateway.emitTenantScheduleUpdated(tenantId);
 
     return { success: true };
   }
@@ -189,6 +203,9 @@ export class WorkScheduleService {
           .neq('online_status', 'working'); // không ghi đè nếu đang làm task
       }
     }
+
+    this.gateway.emitScheduleUpdated(data.user_id);
+    this.gateway.emitTenantScheduleUpdated(tenantId);
 
     return data;
   }

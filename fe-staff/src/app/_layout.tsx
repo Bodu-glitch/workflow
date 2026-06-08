@@ -8,11 +8,10 @@ import React, { useEffect } from 'react';
 import { useColorScheme, Alert } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { AuthProvider } from '@/context/auth';
-import { useAuth } from '@/context/auth';
+import { AuthProvider, useAuth } from '@/context/auth';
+import { SocketProvider, useSocketContext } from '@/context/socket';
 import { LocationTracker } from '@/context/location';
 import { PoolTaskAlert } from '@/components/PoolTaskAlert';
-import { supabase } from '@/lib/supabase';
 import { usePushToken } from '@/hooks/usePushToken';
 
 const queryClient = new QueryClient({
@@ -45,36 +44,26 @@ function PushNotificationSetup() {
 
 // ── Global invitation listener (khi user đang dùng app) ──────────────────────
 function InvitationListener() {
-  const { user, token } = useAuth();
+  const socket = useSocketContext();
 
   useEffect(() => {
-    const email = user?.email;
-    if (!email || !token) return;
+    if (!socket) return;
 
-    const channel = supabase
-      .channel(`invitation-global:${email}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'invitations',
-        filter: `email=eq.${email}`,
-      }, () => {
-        Alert.alert(
-          '🎉 Lời mời mới',
-          'Bạn vừa nhận được lời mời vào một workspace.',
-          [
-            { text: 'Bỏ qua', style: 'cancel' },
-            {
-              text: 'Xem ngay',
-              onPress: () => router.push('/(auth)/invitations'),
-            },
-          ],
-        );
-      })
-      .subscribe();
+    const handler = (data: any) => {
+      if (data?.type !== 'invitation_received') return;
+      Alert.alert(
+        '🎉 Lời mời mới',
+        'Bạn vừa nhận được lời mời vào một workspace.',
+        [
+          { text: 'Bỏ qua', style: 'cancel' },
+          { text: 'Xem ngay', onPress: () => router.push('/(auth)/invitations') },
+        ],
+      );
+    };
 
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.email, token]);
+    socket.on('notification:new', handler);
+    return () => { socket.off('notification:new', handler); };
+  }, [socket]);
 
   return null;
 }
@@ -106,14 +95,16 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <AnimatedSplashOverlay />
-          <RootStack />
-          <PushNotificationSetup />
-          <InvitationListener />
-          <LocationTracker />
-          <PoolTaskAlert />
-        </ThemeProvider>
+        <SocketProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <AnimatedSplashOverlay />
+            <RootStack />
+            <PushNotificationSetup />
+            <InvitationListener />
+            <LocationTracker />
+            <PoolTaskAlert />
+          </ThemeProvider>
+        </SocketProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

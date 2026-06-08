@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 
 const STORAGE_KEY = 'chat_last_read_at';
 
@@ -13,43 +13,29 @@ export async function markChatAsRead() {
 
 export function ChatBell() {
   const { user } = useAuth();
-  const tenantId = user?.tenant_id;
-  const userId = user?.id;
+  const socket = useSocketContext();
   const [unread, setUnread] = useState(0);
 
-  const fetchUnread = useCallback(async () => {
-    if (!tenantId || !userId) return;
-    const lastRead = await AsyncStorage.getItem(STORAGE_KEY);
-    let query = supabase
-      .from('chat_messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .neq('user_id', userId);
-    if (lastRead) query = query.gt('created_at', lastRead);
-    const { count } = await query;
-    setUnread(count ?? 0);
-  }, [tenantId, userId]);
-
   useEffect(() => {
-    fetchUnread();
-  }, [fetchUnread]);
+    if (!socket || !user?.id) return;
 
-  useEffect(() => {
-    if (!tenantId) return;
-    const channel = supabase
-      .channel(`chat-bell:${tenantId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `tenant_id=eq.${tenantId}` },
-        () => fetchUnread(),
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [tenantId, fetchUnread]);
+    const handler = (msg: any) => {
+      if (msg?.user_id !== user.id) {
+        setUnread((n) => n + 1);
+      }
+    };
+
+    socket.on('staff_chat:message', handler);
+    return () => { socket.off('staff_chat:message', handler); };
+  }, [socket, user?.id]);
 
   return (
     <Pressable
-      onPress={() => { setUnread(0); markChatAsRead(); router.push('/chat'); }}
+      onPress={() => {
+        setUnread(0);
+        void markChatAsRead();
+        router.push('/chat');
+      }}
       className="w-10 h-10 items-center justify-center active:opacity-60"
     >
       <Text className="text-xl">💬</Text>

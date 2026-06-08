@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable as RNPressable } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,7 +7,6 @@ import { Pressable, ScrollView, Text, TextInput, View } from '@/tw';
 import { useAuth } from '@/context/auth';
 import { meApi, type OnlineStatus } from '@/lib/api/me';
 import { Image as TwImage } from '@/tw/image';
-import { supabase } from '@/lib/supabase';
 
 const ONLINE_STATUS_CONFIG: Record<OnlineStatus, { label: string; color: string; bg: string; dot: string; icon: string }> = {
   online:  { label: 'Online',    color: '#15803d', bg: '#dcfce7', dot: '#16a34a', icon: '🟢' },
@@ -18,18 +17,6 @@ const ONLINE_STATUS_CONFIG: Record<OnlineStatus, { label: string; color: string;
 export default function ProfileScreen() {
   const { user, logout, leaveCurrentWorkspace } = useAuth();
   const qc = useQueryClient();
-
-  useEffect(() => {
-    const userId = user?.id;
-    if (!userId) return;
-    const channel = supabase
-      .channel(`profile:${userId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${userId}` }, () => {
-        qc.invalidateQueries({ queryKey: ['me-profile'] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id, qc]);
 
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState('');

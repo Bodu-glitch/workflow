@@ -10,6 +10,7 @@ import * as crypto from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { EmailService } from '../email/email.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { InviteStaffDto } from './dto/invite-staff.dto.js';
 import { AcceptInvitationGoogleDto } from './dto/accept-invitation-google.dto.js';
 import { ApplyToWorkspaceDto } from './dto/apply-to-workspace.dto.js';
@@ -21,6 +22,7 @@ export class StaffService {
     private supabase: SupabaseService,
     private emailService: EmailService,
     private notifications: NotificationsService,
+    private gateway: EventsGateway,
   ) {}
 
   async invite(dto: InviteStaffDto, invitedBy: { id: string; tenant_id: string }) {
@@ -108,6 +110,7 @@ export class StaffService {
 
       void this.emailService.sendInvitationAcceptEmail(dto.email, token);
 
+      this.gateway.emitStaffUpdated(invitedBy.tenant_id);
       return { message: 'Invitation sent via push and email', invitation_id: data.id, in_other_workspace: inOtherWorkspace };
     }
 
@@ -137,6 +140,7 @@ export class StaffService {
 
     await this.emailService.sendInvitationEmail(dto.email, token);
 
+    this.gateway.emitStaffUpdated(invitedBy.tenant_id);
     return { message: 'Invitation sent', invitation_id: data.id, token, in_other_workspace: inOtherWorkspace };
   }
 
@@ -201,6 +205,7 @@ export class StaffService {
       .eq('id', invitation.tenant_id)
       .single();
 
+    this.gateway.emitStaffUpdated(invitation.tenant_id);
     return {
       user: {
         id: googleUser.id,
@@ -419,6 +424,7 @@ export class StaffService {
       metadata: { removed_user_id: staffId },
     });
 
+    this.gateway.emitStaffUpdated(currentUser.tenant_id);
     return { message: 'Staff member removed' };
   }
 
@@ -469,6 +475,7 @@ export class StaffService {
       .update({ status: 'accepted' })
       .eq('id', invitationId);
 
+    this.gateway.emitStaffUpdated(invitation.tenant_id);
     return { message: 'Invitation accepted' };
   }
 
@@ -603,6 +610,7 @@ export class StaffService {
 
     if (error) throw new BadRequestException(error.message);
 
+    this.gateway.emitStaffUpdated(dto.tenant_id);
     return { message: 'Application submitted', application: { id: data.id, status: data.status, tenant } };
   }
 
@@ -710,6 +718,9 @@ export class StaffService {
       tenant_id: tenantId,
     });
 
+    this.gateway.emitApplicationUpdated(app.applicant_id, { applicationId, status: 'approved' });
+    this.gateway.emitStaffUpdated(tenantId);
+
     return { message: 'Application approved' };
   }
 
@@ -730,6 +741,9 @@ export class StaffService {
       .from('workspace_applications')
       .update({ status: 'rejected', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
       .eq('id', applicationId);
+
+    this.gateway.emitApplicationUpdated(app.applicant_id, { applicationId, status: 'rejected' });
+    this.gateway.emitStaffUpdated(tenantId);
 
     return { message: 'Application rejected' };
   }

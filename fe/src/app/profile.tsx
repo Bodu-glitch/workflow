@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable as RNPressable } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,6 @@ import { useAuth } from '@/context/auth';
 import { meApi } from '@/lib/api/me';
 import { workspaceApi } from '@/lib/api/workspace';
 import { useToast } from '@/context/toast';
-import { supabase } from '@/lib/supabase';
 
 const ROLE_LABELS: Record<string, string> = {
   business_owner: 'Business Owner',
@@ -133,22 +132,6 @@ export default function ProfileScreen() {
   const { user, logout, switchTenant, leaveCurrentWorkspace, role } = useAuth();
   const qc = useQueryClient();
   const { showToast } = useToast();
-
-  useEffect(() => {
-    const userId = user?.id;
-    const tenantId = user?.tenant_id;
-    if (!userId) return;
-    const channel = supabase
-      .channel(`profile:${userId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${userId}` }, () => {
-        qc.invalidateQueries({ queryKey: ['me-profile'] });
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tenants', filter: `id=eq.${tenantId}` }, () => {
-        qc.invalidateQueries({ queryKey: ['workspace-profile'] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id, user?.tenant_id, qc]);
 
   const isBO = role === 'business_owner';
   const isOT = role === 'operator';

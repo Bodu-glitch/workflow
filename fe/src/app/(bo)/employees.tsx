@@ -11,7 +11,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ApiError } from '@/lib/api/client';
 import { useToast } from '@/context/toast';
 import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 import type { StaffMember, StaffDisplayStatus, WorkspaceApplication, ViolationNote } from '@/types/api';
 
 type Tab = 'staff' | 'invitations' | 'applications';
@@ -278,43 +278,19 @@ export default function BOEmployeeManagementScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const { role, user } = useAuth();
+  const socket = useSocketContext();
   const isBO = role === 'business_owner';
 
-  // ── Realtime: invitations + staff membership ──────────────────────────────
   useEffect(() => {
-    const tenantId = user?.tenant_id;
-    if (!tenantId) return;
-
-    const channel = supabase
-      .channel(`employees:${tenantId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'invitations',
-        filter: `tenant_id=eq.${tenantId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['invitations'] });
-      })
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'user_tenants',
-        filter: `tenant_id=eq.${tenantId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['staff'] });
-        qc.invalidateQueries({ queryKey: ['invitations'] });
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'workspace_applications',
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['staff-applications'] });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.tenant_id, qc]);
+    if (!socket) return;
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['staff'] });
+      qc.invalidateQueries({ queryKey: ['invitations'] });
+      qc.invalidateQueries({ queryKey: ['staff-applications'] });
+    };
+    socket.on('staff:updated', handler);
+    return () => { socket.off('staff:updated', handler); };
+  }, [socket, qc]);
 
   useFocusEffect(useCallback(() => {
     qc.invalidateQueries({ queryKey: ['staff-applications'] });
