@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 
 interface PushPayload {
@@ -18,6 +19,7 @@ export class NotificationsService {
   constructor(
     private supabase: SupabaseService,
     private config: ConfigService,
+    private gateway: EventsGateway,
   ) {}
 
   async sendPushNotification(payload: PushPayload): Promise<void> {
@@ -33,9 +35,16 @@ export class NotificationsService {
     }));
 
     if (records.length > 0) {
-      const { error } = await this.supabase.db.from('notifications').insert(records);
+      const { data: inserted, error } = await this.supabase.db
+        .from('notifications')
+        .insert(records)
+        .select();
       if (error) {
         console.error('[Notifications] DB insert failed:', error.message);
+      } else if (inserted) {
+        for (const record of inserted) {
+          this.gateway.emitNotificationNew(record.user_id, record);
+        }
       }
     }
 

@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { useAuth } from '@/context/auth';
 import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 
 const STORAGE_KEY = 'chat_last_read_at';
 
@@ -13,6 +14,7 @@ export async function markChatAsRead() {
 
 export function ChatBell() {
   const { user } = useAuth();
+  const socket = useSocketContext();
   const tenantId = user?.tenant_id;
   const userId = user?.id;
   const [unread, setUnread] = useState(0);
@@ -35,17 +37,13 @@ export function ChatBell() {
   }, [fetchUnread]);
 
   useEffect(() => {
-    if (!tenantId) return;
-    const channel = supabase
-      .channel(`chat-bell:${tenantId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `tenant_id=eq.${tenantId}` },
-        () => fetchUnread(),
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [tenantId, fetchUnread]);
+    if (!socket || !userId) return;
+    const handler = (msg: any) => {
+      if (msg?.user_id !== userId) setUnread((n) => n + 1);
+    };
+    socket.on('staff_chat:message', handler);
+    return () => { socket.off('staff_chat:message', handler); };
+  }, [socket, userId]);
 
   return (
     <Pressable

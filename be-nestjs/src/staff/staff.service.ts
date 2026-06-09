@@ -10,6 +10,7 @@ import * as crypto from 'crypto';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { EmailService } from '../email/email.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { InviteStaffDto } from './dto/invite-staff.dto.js';
 import { AcceptInvitationGoogleDto } from './dto/accept-invitation-google.dto.js';
 import { ApplyToWorkspaceDto } from './dto/apply-to-workspace.dto.js';
@@ -21,6 +22,7 @@ export class StaffService {
     private supabase: SupabaseService,
     private emailService: EmailService,
     private notifications: NotificationsService,
+    private gateway: EventsGateway,
   ) {}
 
   async invite(dto: InviteStaffDto, invitedBy: { id: string; tenant_id: string }) {
@@ -108,6 +110,7 @@ export class StaffService {
 
       void this.emailService.sendInvitationAcceptEmail(dto.email, token);
 
+      this.gateway.emitStaffUpdated(invitedBy.tenant_id);
       return { message: 'Invitation sent via push and email', invitation_id: data.id, in_other_workspace: inOtherWorkspace };
     }
 
@@ -137,6 +140,7 @@ export class StaffService {
 
     await this.emailService.sendInvitationEmail(dto.email, token);
 
+    this.gateway.emitStaffUpdated(invitedBy.tenant_id);
     return { message: 'Invitation sent', invitation_id: data.id, token, in_other_workspace: inOtherWorkspace };
   }
 
@@ -201,6 +205,7 @@ export class StaffService {
       .eq('id', invitation.tenant_id)
       .single();
 
+    this.gateway.emitStaffUpdated(invitation.tenant_id);
     return {
       user: {
         id: googleUser.id,
@@ -217,6 +222,11 @@ export class StaffService {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
 
+    // Dùng UTC+7 (Vietnam) cho cả ngày lẫn giờ
+    const nowVN = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const today = nowVN.toISOString().split('T')[0];
+    const currentTime = nowVN.toISOString().split('T')[1].substring(0, 5); // 'HH:MM'
+
     const { data, count, error } = await this.supabase.db
       .from('user_tenants')
       .select(
@@ -232,6 +242,36 @@ export class StaffService {
 
     if (error) throw new BadRequestException(error.message);
 
+    const userIds = (data ?? []).map((row: any) => row.users.id);
+    let onLeaveIds = new Set<string>();
+    let lateIds = new Set<string>();
+
+    if (userIds.length > 0) {
+      // Nghỉ phép hôm nay
+      const { data: leaves } = await this.supabase.db
+        .from('leave_requests')
+        .select('user_id')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'approved')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .in('user_id', userIds);
+      onLeaveIds = new Set((leaves ?? []).map((l: any) => l.user_id));
+
+      // Ca hôm nay đã bắt đầu nhưng nhân viên vẫn offline
+      const { data: shifts } = await this.supabase.db
+        .from('shift_assignments')
+        .select('user_id, work_shifts!shift_id(start_time)')
+        .eq('tenant_id', tenantId)
+        .eq('work_date', today)
+        .in('user_id', userIds);
+
+      const startedUserIds = (shifts ?? [])
+        .filter((s: any) => (s.work_shifts?.start_time ?? '99:99') <= currentTime)
+        .map((s: any) => s.user_id);
+      lateIds = new Set(startedUserIds);
+    }
+
     const normalized = (data ?? []).map((row: any) => ({
       id: row.users.id,
       email: row.users.email,
@@ -244,6 +284,8 @@ export class StaffService {
       online_status: row.online_status ?? 'offline',
       lock_reason: row.lock_reason ?? null,
       created_at: row.created_at,
+      is_on_leave: onLeaveIds.has(row.users.id),
+      is_late: lateIds.has(row.users.id) && (row.online_status ?? 'offline') === 'offline' && !onLeaveIds.has(row.users.id),
     }));
 
     return { data: normalized, meta: { total: count, page, limit } };
@@ -419,6 +461,7 @@ export class StaffService {
       metadata: { removed_user_id: staffId },
     });
 
+    this.gateway.emitStaffUpdated(currentUser.tenant_id);
     return { message: 'Staff member removed' };
   }
 
@@ -469,6 +512,7 @@ export class StaffService {
       .update({ status: 'accepted' })
       .eq('id', invitationId);
 
+    this.gateway.emitStaffUpdated(invitation.tenant_id);
     return { message: 'Invitation accepted' };
   }
 
@@ -603,6 +647,7 @@ export class StaffService {
 
     if (error) throw new BadRequestException(error.message);
 
+    this.gateway.emitStaffUpdated(dto.tenant_id);
     return { message: 'Application submitted', application: { id: data.id, status: data.status, tenant } };
   }
 
@@ -710,6 +755,9 @@ export class StaffService {
       tenant_id: tenantId,
     });
 
+    this.gateway.emitApplicationUpdated(app.applicant_id, { applicationId, status: 'approved' });
+    this.gateway.emitStaffUpdated(tenantId);
+
     return { message: 'Application approved' };
   }
 
@@ -730,6 +778,9 @@ export class StaffService {
       .from('workspace_applications')
       .update({ status: 'rejected', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
       .eq('id', applicationId);
+
+    this.gateway.emitApplicationUpdated(app.applicant_id, { applicationId, status: 'rejected' });
+    this.gateway.emitStaffUpdated(tenantId);
 
     return { message: 'Application rejected' };
   }

@@ -149,8 +149,7 @@ export class RequestsService {
         category:category_id(id, name, slug, icon_url),
         tenant:tenant_id(id, name, slug),
         pricing:pricing_id(id, service_name, price_min, price_max, price_fixed, currency, estimated_duration_minutes),
-        staff:assigned_staff_id(id, full_name, avatar_url, phone, rating_avg, rating_count),
-        task:task_id(id, status)
+        staff:assigned_staff_id(id, full_name, avatar_url, phone, rating_avg, rating_count)
       `)
       .eq('id', id)
       .single();

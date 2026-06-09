@@ -550,7 +550,9 @@ export class TasksService {
       dto.gps_lat !== undefined &&
       dto.gps_lng !== undefined &&
       task.location_lat !== null &&
-      task.location_lng !== null
+      task.location_lng !== null &&
+      task.location_lat !== 0 &&
+      task.location_lng !== 0
     ) {
       const distance = haversineDistance(dto.gps_lat, dto.gps_lng, task.location_lat, task.location_lng);
       gpsVerified = distance <= task.location_radius_m;

@@ -6,7 +6,7 @@ import { scheduleApi } from '@/lib/api/schedule';
 import { staffApi } from '@/lib/api/staff';
 import { useToast } from '@/context/toast';
 import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 import type { WorkShift, ShiftAssignment, LeaveRequest, LeaveType } from '@/types/api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -150,34 +150,17 @@ export default function BOScheduleScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const { user } = useAuth();
+  const socket = useSocketContext();
 
-  // ── Realtime: ca làm việc + đơn nghỉ phép ───────────────────────────────
   useEffect(() => {
-    const tenantId = user?.tenant_id;
-    if (!tenantId) return;
-
-    const channel = supabase
-      .channel(`schedule:${tenantId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'shift_assignments',
-        filter: `tenant_id=eq.${tenantId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['shift-assignments'] });
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'leave_requests',
-        filter: `tenant_id=eq.${tenantId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['leave-requests'] });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.tenant_id, qc]);
+    if (!socket) return;
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['shift-assignments'] });
+      qc.invalidateQueries({ queryKey: ['leave-requests'] });
+    };
+    socket.on('schedule:updated', handler);
+    return () => { socket.off('schedule:updated', handler); };
+  }, [socket, qc]);
 
   const [tab, setTab] = useState<'shifts' | 'leaves'>('shifts');
 

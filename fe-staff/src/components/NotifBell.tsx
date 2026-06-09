@@ -3,11 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { notificationsApi } from '@/lib/api/notifications';
-import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 
 export function NotifBell() {
-  const { user } = useAuth();
+  const socket = useSocketContext();
   const qc = useQueryClient();
 
   const { data } = useQuery({
@@ -17,30 +16,16 @@ export function NotifBell() {
   });
 
   useEffect(() => {
-    const userId = user?.id;
-    if (!userId) return;
+    if (!socket) return;
 
-    const channel = supabase
-      .channel(`notif-bell:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          qc.invalidateQueries({ queryKey: ['unread-count'] });
-          qc.invalidateQueries({ queryKey: ['notifications'] });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['unread-count'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
     };
-  }, [user?.id, qc]);
+
+    socket.on('notification:new', handler);
+    return () => { socket.off('notification:new', handler); };
+  }, [socket, qc]);
 
   const count = data?.data?.count ?? 0;
 

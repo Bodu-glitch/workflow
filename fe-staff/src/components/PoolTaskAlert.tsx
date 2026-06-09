@@ -2,9 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Modal, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
-import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
 import { meApi } from '@/lib/api/me';
+import { useSocketContext } from '@/context/socket';
 
 interface PendingAlert {
   taskId: string;
@@ -69,7 +68,6 @@ function AlertModal({ alert, onDismiss }: { alert: PendingAlert; onDismiss: () =
     <Modal transparent animationType="fade" statusBarTranslucent>
       <View className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
         <View className="bg-white rounded-2xl mx-6 p-6 w-full max-w-sm">
-          {/* Header */}
           <View className="items-center mb-4">
             <Text className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
               Nhiệm vụ mới gần bạn
@@ -78,11 +76,9 @@ function AlertModal({ alert, onDismiss }: { alert: PendingAlert; onDismiss: () =
             <Text className="text-xs text-gray-400 mt-1">giây để phản hồi</Text>
           </View>
 
-          {/* Task info */}
           <Text className="text-lg font-bold text-gray-900 text-center mb-1">{alert.title}</Text>
           <Text className="text-sm text-gray-500 text-center mb-6">{alert.body}</Text>
 
-          {/* Actions */}
           <View className="flex-row gap-3">
             <Pressable
               onPress={onDismiss}
@@ -108,12 +104,12 @@ function AlertModal({ alert, onDismiss }: { alert: PendingAlert; onDismiss: () =
 }
 
 export function PoolTaskAlert() {
-  const { user, token } = useAuth();
+  const socket = useSocketContext();
   const [queue, setQueue] = useState<PendingAlert[]>([]);
 
   const push = useCallback((a: PendingAlert) => {
     setQueue((q) => {
-      if (q.some((x) => x.taskId === a.taskId)) return q; // deduplicate
+      if (q.some((x) => x.taskId === a.taskId)) return q;
       return [...q, a];
     });
   }, []);
@@ -121,25 +117,17 @@ export function PoolTaskAlert() {
   const dismiss = useCallback(() => setQueue((q) => q.slice(1)), []);
 
   useEffect(() => {
-    if (!user?.id || !token) return;
+    if (!socket) return;
 
-    const channel = supabase
-      .channel(`pool-alert:${user.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`,
-      }, (payload) => {
-        const n = payload.new as any;
-        if (n?.type === 'new_pool_task' && n?.task_id) {
-          push({ taskId: n.task_id, title: n.title, body: n.body });
-        }
-      })
-      .subscribe();
+    const handler = (data: any) => {
+      if (data?.type === 'new_pool_task' && data?.task_id) {
+        push({ taskId: data.task_id, title: data.title ?? 'Nhiệm vụ mới', body: data.body ?? '' });
+      }
+    };
 
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id, token, push]);
+    socket.on('notification:new', handler);
+    return () => { socket.off('notification:new', handler); };
+  }, [socket, push]);
 
   if (queue.length === 0) return null;
   return <AlertModal alert={queue[0]} onDismiss={dismiss} />;

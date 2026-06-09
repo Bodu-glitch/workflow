@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, TextInput } from '@/tw';
 import { scheduleApi } from '@/lib/api/schedule';
 import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 import type { MyShiftAssignment, LeaveRequest, LeaveType } from '@/types/api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -66,33 +66,20 @@ function shiftIcon(startTime: string) {
 
 // ─── My Schedule Tab ─────────────────────────────────────────────────────────
 function MyScheduleTab() {
-  const { user } = useAuth();
   const qc = useQueryClient();
+  const socket = useSocketContext();
 
   const [anchor, setAnchor] = useState(new Date());
   const weekDates = useMemo(() => getWeekDates(anchor), [anchor]);
   const fromISO = toISO(weekDates[0]);
   const toISO2 = toISO(weekDates[6]);
 
-  // ── Realtime: BO phân/xóa ca → staff thấy ngay ───────────────────────────
   useEffect(() => {
-    const userId = user?.id;
-    if (!userId) return;
-
-    const channel = supabase
-      .channel(`my-schedule:${userId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'shift_assignments',
-        filter: `user_id=eq.${userId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['my-assignments'] });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id, qc]);
+    if (!socket) return;
+    const handler = () => { qc.invalidateQueries({ queryKey: ['my-assignments'] }); };
+    socket.on('schedule:updated', handler);
+    return () => { socket.off('schedule:updated', handler); };
+  }, [socket, qc]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-assignments', fromISO, toISO2],
@@ -228,28 +215,15 @@ function MyScheduleTab() {
 
 // ─── Leave Requests Tab ───────────────────────────────────────────────────────
 function LeaveRequestsTab() {
-  const { user } = useAuth();
   const qc = useQueryClient();
+  const socket = useSocketContext();
 
-  // ── Realtime: BO duyệt/từ chối đơn → staff thấy kết quả ngay ────────────
   useEffect(() => {
-    const userId = user?.id;
-    if (!userId) return;
-
-    const channel = supabase
-      .channel(`my-leave:${userId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'leave_requests',
-        filter: `user_id=eq.${userId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['my-leave-requests'] });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id, qc]);
+    if (!socket) return;
+    const handler = () => { qc.invalidateQueries({ queryKey: ['my-leave-requests'] }); };
+    socket.on('schedule:updated', handler);
+    return () => { socket.off('schedule:updated', handler); };
+  }, [socket, qc]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-leave-requests'],

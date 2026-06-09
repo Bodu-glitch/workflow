@@ -17,6 +17,7 @@ import {
   trackingRoom,
   chatRoom,
   tenantPoolRoom,
+  tenantStaffRoom,
   staffRoom,
   customerRoom,
 } from './gateway.types.js';
@@ -72,7 +73,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       let role = dbUser.role;
 
       if (role !== 'superadmin' && role !== 'customer') {
-        const tenantHeader = client.handshake.headers['x-tenant-id'] as string | undefined;
+        // Browsers can't set custom WS headers — tenant ID is passed via auth payload
+        const tenantIdFromAuth = (client.handshake.auth as any)?.tenantId as string | undefined;
+        const tenantHeader = (client.handshake.headers['x-tenant-id'] as string | undefined) ?? tenantIdFromAuth;
         if (tenantHeader) {
           const { data: membership } = await this.supabase.db
             .from('user_tenants')
@@ -97,6 +100,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.join(customerRoom(user.id));
       } else if (role === 'staff') {
         client.join(staffRoom(user.id));
+        if (tenantId) client.join(tenantStaffRoom(tenantId));
       } else if (['business_owner', 'operator'].includes(role) && tenantId) {
         client.join(tenantPoolRoom(tenantId));
       }
@@ -203,6 +207,35 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage(WS_EVENTS.STAFF_CHAT_SEND)
+  async handleStaffChatSend(
+    @MessageBody() data: { content?: string; type?: string; task_id?: string; ticket_id?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const user: SocketUser = client.data.user;
+    if (!user || !user.tenant_id) return;
+
+    const { data: message, error } = await this.supabase.db
+      .from('chat_messages')
+      .insert({
+        tenant_id: user.tenant_id,
+        user_id: user.id,
+        content: data.content ?? null,
+        type: data.type ?? 'text',
+        task_id: data.task_id ?? null,
+        ticket_id: data.ticket_id ?? null,
+      })
+      .select('id, user_id, content, type, task_id, ticket_id, created_at, tenant_id, users!chat_messages_user_id_fkey(full_name)')
+      .single();
+
+    if (error) {
+      client.emit(WS_EVENTS.ERROR, { code: 'CHAT_ERROR', message: error.message });
+      return;
+    }
+
+    this.emitStaffChatMessage(user.tenant_id, message);
+  }
+
   // Public methods for other services to broadcast events
   emitRequestStatusChanged(requestId: string, status: string) {
     const payload = { requestId, status, timestamp: new Date().toISOString() };
@@ -243,5 +276,31 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   emitStaffPoolUpdated(tenantId: string, requestId: string) {
     this.server.to(tenantPoolRoom(tenantId)).emit(WS_EVENTS.STAFF_POOL_UPDATED, { requestId, tenantId });
+  }
+
+  emitNotificationNew(userId: string, data: Record<string, any>) {
+    this.server.to(staffRoom(userId)).emit(WS_EVENTS.NOTIFICATION_NEW, data);
+    this.server.to(customerRoom(userId)).emit(WS_EVENTS.NOTIFICATION_NEW, data);
+  }
+
+  emitScheduleUpdated(userId: string) {
+    this.server.to(staffRoom(userId)).emit(WS_EVENTS.SCHEDULE_UPDATED);
+  }
+
+  emitTenantScheduleUpdated(tenantId: string) {
+    this.server.to(tenantPoolRoom(tenantId)).emit(WS_EVENTS.SCHEDULE_UPDATED);
+  }
+
+  emitStaffChatMessage(tenantId: string, message: Record<string, any>) {
+    this.server.to(tenantStaffRoom(tenantId)).emit(WS_EVENTS.STAFF_CHAT_MESSAGE, message);
+    this.server.to(tenantPoolRoom(tenantId)).emit(WS_EVENTS.STAFF_CHAT_MESSAGE, message);
+  }
+
+  emitApplicationUpdated(userId: string, data: { applicationId: string; status: 'approved' | 'rejected' }) {
+    this.server.to(staffRoom(userId)).emit(WS_EVENTS.APPLICATION_UPDATED, data);
+  }
+
+  emitStaffUpdated(tenantId: string) {
+    this.server.to(tenantPoolRoom(tenantId)).emit(WS_EVENTS.STAFF_UPDATED);
   }
 }

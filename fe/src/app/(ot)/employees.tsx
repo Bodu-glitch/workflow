@@ -10,7 +10,7 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { ApiError } from '@/lib/api/client';
 import { useToast } from '@/context/toast';
 import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
 import type { StaffMember, StaffDisplayStatus, WorkspaceApplication } from '@/types/api';
 
 type Tab = 'staff' | 'invitations' | 'applications';
@@ -19,6 +19,8 @@ type StatusFilter = 'all' | StaffDisplayStatus;
 function getDisplayStatus(s: StaffMember): StaffDisplayStatus {
   if (!s.is_active) return 'locked';
   if (s.online_status === 'working') return 'working';
+  if (s.is_on_leave) return 'on_leave';
+  if (s.is_late) return 'late';
   if (s.online_status === 'online') return 'online';
   return 'offline';
 }
@@ -26,18 +28,22 @@ function getDisplayStatus(s: StaffMember): StaffDisplayStatus {
 const STATUS_CONFIG: Record<StaffDisplayStatus, {
   label: string; dot: string; bg: string; color: string; icon: string;
 }> = {
-  online:  { label: 'Online',    dot: '#16a34a', bg: '#dcfce7', color: '#15803d', icon: '🟢' },
-  working: { label: 'Đang làm', dot: '#2563eb', bg: '#dbeafe', color: '#1d4ed8', icon: '🔵' },
-  offline: { label: 'Offline',   dot: '#9ca3af', bg: '#f3f4f6', color: '#6b7280', icon: '⚪' },
-  locked:  { label: 'Bị khóa',  dot: '#dc2626', bg: '#fee2e2', color: '#dc2626', icon: '🔒' },
+  online:   { label: 'Online',        dot: '#16a34a', bg: '#dcfce7', color: '#15803d', icon: '🟢' },
+  working:  { label: 'Đang làm',     dot: '#2563eb', bg: '#dbeafe', color: '#1d4ed8', icon: '🔵' },
+  offline:  { label: 'Offline',       dot: '#9ca3af', bg: '#f3f4f6', color: '#6b7280', icon: '⚪' },
+  locked:   { label: 'Bị khóa',      dot: '#dc2626', bg: '#fee2e2', color: '#dc2626', icon: '🔒' },
+  on_leave: { label: 'Nghỉ phép',    dot: '#d97706', bg: '#fef3c7', color: '#b45309', icon: '🏖️' },
+  late:     { label: 'Chưa vào ca',  dot: '#dc2626', bg: '#fee2e2', color: '#dc2626', icon: '🔴' },
 };
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
-  { key: 'all',     label: 'Tất cả' },
-  { key: 'online',  label: '🟢 Online' },
-  { key: 'working', label: '🔵 Đang làm' },
-  { key: 'offline', label: '⚪ Offline' },
-  { key: 'locked',  label: '🔒 Bị khóa' },
+  { key: 'all',      label: 'Tất cả' },
+  { key: 'online',   label: '🟢 Online' },
+  { key: 'working',  label: '🔵 Đang làm' },
+  { key: 'late',     label: '🔴 Chưa vào ca' },
+  { key: 'on_leave', label: '🏖️ Nghỉ phép' },
+  { key: 'offline',  label: '⚪ Offline' },
+  { key: 'locked',   label: '🔒 Bị khóa' },
 ];
 
 function StatusBadge({ status }: { status: StaffDisplayStatus }) {
@@ -54,42 +60,18 @@ export default function OTEmployeeManagementScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const { user } = useAuth();
+  const socket = useSocketContext();
 
-  // ── Realtime: invitations + staff membership ──────────────────────────────
   useEffect(() => {
-    const tenantId = user?.tenant_id;
-    if (!tenantId) return;
-
-    const channel = supabase
-      .channel(`employees:${tenantId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'invitations',
-        filter: `tenant_id=eq.${tenantId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['invitations'] });
-      })
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'user_tenants',
-        filter: `tenant_id=eq.${tenantId}`,
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['staff'] });
-        qc.invalidateQueries({ queryKey: ['invitations'] });
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'workspace_applications',
-      }, () => {
-        qc.invalidateQueries({ queryKey: ['staff-applications'] });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.tenant_id, qc]);
+    if (!socket) return;
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['staff'] });
+      qc.invalidateQueries({ queryKey: ['invitations'] });
+      qc.invalidateQueries({ queryKey: ['staff-applications'] });
+    };
+    socket.on('staff:updated', handler);
+    return () => { socket.off('staff:updated', handler); };
+  }, [socket, qc]);
 
   useFocusEffect(useCallback(() => {
     qc.invalidateQueries({ queryKey: ['staff-applications'] });
@@ -180,7 +162,7 @@ export default function OTEmployeeManagementScreen() {
 
   const statusCounts = allStaff.reduce<Record<StaffDisplayStatus, number>>(
     (acc, s) => { acc[getDisplayStatus(s)]++; return acc; },
-    { online: 0, working: 0, offline: 0, locked: 0 },
+    { online: 0, working: 0, offline: 0, locked: 0, on_leave: 0, late: 0 },
   );
 
   const filteredStaff = statusFilter === 'all'

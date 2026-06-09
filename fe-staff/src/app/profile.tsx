@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable as RNPressable } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,7 +7,6 @@ import { Pressable, ScrollView, Text, TextInput, View } from '@/tw';
 import { useAuth } from '@/context/auth';
 import { meApi, type OnlineStatus } from '@/lib/api/me';
 import { Image as TwImage } from '@/tw/image';
-import { supabase } from '@/lib/supabase';
 
 const ONLINE_STATUS_CONFIG: Record<OnlineStatus, { label: string; color: string; bg: string; dot: string; icon: string }> = {
   online:  { label: 'Online',    color: '#15803d', bg: '#dcfce7', dot: '#16a34a', icon: '🟢' },
@@ -18,18 +17,6 @@ const ONLINE_STATUS_CONFIG: Record<OnlineStatus, { label: string; color: string;
 export default function ProfileScreen() {
   const { user, logout, leaveCurrentWorkspace } = useAuth();
   const qc = useQueryClient();
-
-  useEffect(() => {
-    const userId = user?.id;
-    if (!userId) return;
-    const channel = supabase
-      .channel(`profile:${userId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${userId}` }, () => {
-        qc.invalidateQueries({ queryKey: ['me-profile'] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id, qc]);
 
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -68,6 +55,12 @@ export default function ProfileScreen() {
     mutationFn: (id: string) => meApi.deleteCertificate(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me-profile'] }),
     onError: () => Alert.alert('Lỗi', 'Không thể xóa chứng chỉ.'),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: (status: 'online' | 'offline') => meApi.updateOnlineStatus(status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me-profile'] }),
+    onError: () => Alert.alert('Lỗi', 'Không thể cập nhật trạng thái.'),
   });
 
   function startEdit() {
@@ -431,27 +424,49 @@ export default function ProfileScreen() {
           <Text className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">
             Trạng thái
           </Text>
-          <View className="bg-surface-container-lowest rounded-2xl px-4 py-4 flex-row items-center gap-3">
-            <View
-              className="w-10 h-10 rounded-xl items-center justify-center"
-              style={{ backgroundColor: ONLINE_STATUS_CONFIG[currentStatus].bg }}
-            >
-              <Text style={{ fontSize: 20 }}>{ONLINE_STATUS_CONFIG[currentStatus].icon}</Text>
+          <View className="bg-surface-container-lowest rounded-2xl px-4 py-4 gap-3">
+            <View className="flex-row items-center gap-3">
+              <View
+                className="w-10 h-10 rounded-xl items-center justify-center"
+                style={{ backgroundColor: ONLINE_STATUS_CONFIG[currentStatus].bg }}
+              >
+                <Text style={{ fontSize: 20 }}>{ONLINE_STATUS_CONFIG[currentStatus].icon}</Text>
+              </View>
+              <View className="flex-1">
+                <Text className="text-sm font-bold" style={{ color: ONLINE_STATUS_CONFIG[currentStatus].color }}>
+                  {ONLINE_STATUS_CONFIG[currentStatus].label}
+                </Text>
+                <Text className="text-xs text-on-surface-variant mt-0.5">
+                  {currentStatus === 'online'  && 'Bạn có ca làm việc hôm nay'}
+                  {currentStatus === 'working' && 'Đang thực hiện công việc'}
+                  {currentStatus === 'offline' && 'Không có ca hôm nay hoặc đang nghỉ phép'}
+                </Text>
+              </View>
+              <View
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ backgroundColor: ONLINE_STATUS_CONFIG[currentStatus].dot }}
+              />
             </View>
-            <View className="flex-1">
-              <Text className="text-sm font-bold" style={{ color: ONLINE_STATUS_CONFIG[currentStatus].color }}>
-                {ONLINE_STATUS_CONFIG[currentStatus].label}
-              </Text>
-              <Text className="text-xs text-on-surface-variant mt-0.5">
-                {currentStatus === 'online'  && 'Bạn có ca làm việc hôm nay'}
-                {currentStatus === 'working' && 'Đang thực hiện công việc'}
-                {currentStatus === 'offline' && 'Không có ca hôm nay hoặc đang nghỉ phép'}
-              </Text>
-            </View>
-            <View
-              className="w-2.5 h-2.5 rounded-full"
-              style={{ backgroundColor: ONLINE_STATUS_CONFIG[currentStatus].dot }}
-            />
+            {currentStatus !== 'working' && (
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={() => statusMutation.mutate('online')}
+                  disabled={statusMutation.isPending || currentStatus === 'online'}
+                  className="flex-1 py-2 rounded-xl items-center active:opacity-70 disabled:opacity-40"
+                  style={{ backgroundColor: currentStatus === 'online' ? '#16a34a' : '#dcfce7' }}
+                >
+                  <Text className="text-xs font-bold" style={{ color: currentStatus === 'online' ? '#fff' : '#15803d' }}>🟢 Online</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => statusMutation.mutate('offline')}
+                  disabled={statusMutation.isPending || currentStatus === 'offline'}
+                  className="flex-1 py-2 rounded-xl items-center active:opacity-70 disabled:opacity-40"
+                  style={{ backgroundColor: currentStatus === 'offline' ? '#6b7280' : '#f3f4f6' }}
+                >
+                  <Text className="text-xs font-bold" style={{ color: currentStatus === 'offline' ? '#fff' : '#6b7280' }}>⚪ Offline</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
 

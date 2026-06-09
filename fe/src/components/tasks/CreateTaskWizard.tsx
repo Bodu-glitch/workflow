@@ -238,13 +238,17 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
         customerNote: existingTask.customer_note ?? '',
       });
 
+      const deadlineLocal = (() => {
+        if (!existingTask.deadline) return '';
+        const d = new Date(existingTask.deadline);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      })();
       setStep3({
         location: existingTask.location_lat != null
           ? { name: existingTask.location_name ?? '', lat: existingTask.location_lat, lng: existingTask.location_lng! }
           : null,
-        deadline: existingTask.deadline
-          ? existingTask.deadline.replace('Z', '').substring(0, 16)
-          : '',
+        deadline: deadlineLocal,
         serviceType: existingTask.service_type ?? '',
         area: existingTask.area ?? '',
       });

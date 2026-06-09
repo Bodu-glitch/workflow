@@ -111,6 +111,8 @@ export interface StaffMember {
   online_status: 'online' | 'offline' | 'working';
   lock_reason?: string | null;
   created_at: string;
+  is_on_leave: boolean;
+  is_late: boolean;
 }
 
 export interface ViolationNote {
@@ -123,8 +125,8 @@ export interface ViolationNote {
   users?: { id: string; full_name: string };
 }
 
-/** Computed display status for UI — derived from is_active + online_status */
-export type StaffDisplayStatus = 'online' | 'working' | 'offline' | 'locked';
+/** Computed display status for UI — derived from is_active + online_status + is_on_leave + is_late */
+export type StaffDisplayStatus = 'online' | 'working' | 'offline' | 'locked' | 'on_leave' | 'late';
 
 export interface Invitation {
   id: string;
@@ -172,10 +174,9 @@ export type AuditAction =
 export interface AuditLog {
   id: string;
   action: AuditAction;
-  actor_id: string;
-  actor_name: string;
-  entity_type: string;
-  entity_id: string;
+  user_id: string;
+  actor: { id: string; role: string; full_name: string } | null;
+  task: { id: string; title: string } | null;
   metadata: Record<string, unknown>;
   created_at: string;
 }

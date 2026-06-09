@@ -42,11 +42,11 @@ function AuditCard({ log }: { log: AuditLog }) {
     <View className="bg-surface-container-lowest rounded-xl p-4 mb-3 flex-row items-start overflow-hidden">
       <View className={`absolute left-0 top-0 bottom-0 w-1 ${style.pill}`} />
       <View className="w-10 h-10 rounded-xl bg-surface-container-high items-center justify-center mr-3">
-        <Text className="text-sm font-extrabold text-primary">{log.actor_name?.charAt(0) ?? '?'}</Text>
+        <Text className="text-sm font-extrabold text-primary">{log.actor?.full_name?.charAt(0) ?? '?'}</Text>
       </View>
       <View className="flex-1">
         <View className="flex-row items-center justify-between mb-1">
-          <Text className="text-sm font-bold text-on-surface">{log.actor_name}</Text>
+          <Text className="text-sm font-bold text-on-surface">{log.actor?.full_name ?? 'Unknown'}</Text>
           <Text className="text-[10px] text-outline uppercase tracking-wider">
             {new Date(log.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
           </Text>
