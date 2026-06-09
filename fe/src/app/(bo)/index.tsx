@@ -330,6 +330,31 @@ export default function BODashboardScreen() {
             )}
           </View>
 
+          {/* Services */}
+          <View>
+            <Text className="text-base font-bold text-on-surface mb-3">Services</Text>
+            <View className="flex-row gap-3">
+              <Pressable
+                onPress={() => router.push('/(bo)/pricing')}
+                className="flex-1 rounded-2xl p-4 active:opacity-70"
+                style={{ backgroundColor: '#eff6ff' }}
+              >
+                <Text style={{ fontSize: 22 }}>🏷️</Text>
+                <Text className="text-sm font-bold mt-2" style={{ color: '#1E40AF' }}>Pricing</Text>
+                <Text className="text-xs text-on-surface-variant mt-0.5">Manage service prices</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/(bo)/vouchers')}
+                className="flex-1 rounded-2xl p-4 active:opacity-70"
+                style={{ backgroundColor: '#f0fdf4' }}
+              >
+                <Text style={{ fontSize: 22 }}>🎟️</Text>
+                <Text className="text-sm font-bold mt-2" style={{ color: '#059669' }}>Vouchers</Text>
+                <Text className="text-xs text-on-surface-variant mt-0.5">Manage discount codes</Text>
+              </Pressable>
+            </View>
+          </View>
+
           {/* Critical Activities */}
           <View className="bg-surface-container-lowest rounded-2xl p-4">
             <View className="flex-row items-center justify-between mb-3">

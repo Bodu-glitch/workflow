@@ -411,7 +411,10 @@ export default function SelectTenantScreen() {
 
   useEffect(() => {
     if (!socket) return;
-    const handleApp = () => { refreshApplications(); };
+    const handleApp = (data: any) => {
+      refreshApplications();
+      if (data?.status === 'approved') refreshProfile();
+    };
     const handleInvite = (data: any) => {
       if (data?.type === 'invitation_received') {
         staffApi.myInvitations()

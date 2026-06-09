@@ -16,6 +16,7 @@ import { SelectTenantDto } from './dto/select-tenant.dto.js';
 import { AssignRequestDto } from './dto/assign-request.dto.js';
 import { ConfirmPriceDto } from './dto/confirm-price.dto.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
+import { VouchersService } from '../vouchers/vouchers.service.js';
 
 interface CurrentUser {
   id: string;
@@ -34,6 +35,7 @@ export class RequestsService {
     private matching: MatchingService,
     private gateway: EventsGateway,
     private config: ConfigService,
+    private vouchers: VouchersService,
   ) {}
 
   async createRequest(
@@ -250,12 +252,27 @@ export class RequestsService {
     // Scheduled requests stay 'unavailable' until scheduled time; immediate requests go to 'pending_assignment'
     const newStatus = request.status === 'unavailable' ? 'unavailable' : 'pending_assignment';
 
+    let voucherId: string | null = null;
+    let discountAmount: number | null = null;
+    if (dto.voucher_code && dto.agreed_price != null) {
+      try {
+        const vr = await this.vouchers.validate(dto.voucher_code, dto.tenant_id, dto.agreed_price);
+        voucherId = vr.voucher_id;
+        discountAmount = vr.discount_amount;
+        // Increment used_count
+        await this.supabase.db.rpc('increment_voucher_used_count', { voucher_id: voucherId });
+      } catch {
+        // voucher invalid — proceed without discount
+      }
+    }
+
     const { data, error } = await this.supabase.db
       .from('service_requests')
       .update({
         tenant_id: dto.tenant_id,
         pricing_id: dto.pricing_id ?? match.pricing_id ?? null,
         status: newStatus,
+        ...(voucherId ? { voucher_id: voucherId, discount_amount: discountAmount } : {}),
       })
       .eq('id', id)
       .select()

@@ -5,6 +5,7 @@ import {
   FlatList,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as Location from 'expo-location';
 import { api } from '../../lib/api';
 import { useLocation } from '../../hooks/useLocation';
 import { CategoryPicker } from '../../components/CategoryPicker';
@@ -47,6 +48,7 @@ export default function NewRequestScreen() {
   const [pickerMode, setPickerMode] = useState<'time' | 'datetime'>('time');
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locationName, setLocationName] = useState('');
+  const [reverseGeocoding, setReverseGeocoding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [tenants, setTenants] = useState<MatchingTenant[]>([]);
   const [loadingTenants, setLoadingTenants] = useState(false);
@@ -54,17 +56,53 @@ export default function NewRequestScreen() {
   const [activeFilter, setActiveFilter] = useState(0);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   const [selectingTenant, setSelectingTenant] = useState(false);
+  const [voucherCode, setVoucherCode] = useState('');
+  const [voucherResult, setVoucherResult] = useState<{ voucher_id: string; code: string; name: string; discount_amount: number; final_amount: number } | null>(null);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [validatingVoucher, setValidatingVoucher] = useState(false);
 
   useEffect(() => { fetchCategories(); }, []);
 
   useEffect(() => {
     if (location && !locationCoords) {
       setLocationCoords({ lat: location.latitude, lng: location.longitude });
+      reverseGeocode(location.latitude, location.longitude);
     } else if (locationError && !locationCoords) {
-      // GPS unavailable — fall back to HCM City center so submission can proceed
       setLocationCoords({ lat: 10.8231, lng: 106.6297 });
     }
   }, [location, locationError]);
+
+  async function reverseGeocode(lat: number, lng: number) {
+    setReverseGeocoding(true);
+    try {
+      if (Platform.OS === 'web') {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+          { headers: { 'Accept-Language': 'vi' } },
+        );
+        const json = await res.json();
+        // Parse address object to avoid duplicate admin levels in display_name
+        const a = json?.address ?? {};
+        const strip = (s?: string) => s?.replace(/^(Thành phố|Quận|Huyện|Phường|Xã|Thị xã|Thị trấn)\s+/i, '').trim();
+        const parts = [
+          a.road,
+          strip(a.suburb) || strip(a.quarter),
+          strip(a.city ?? a.county ?? a.municipality),
+        ].filter(Boolean);
+        setLocationName(parts.length > 0 ? parts.join(', ') : (json?.display_name ?? ''));
+        return;
+      }
+      const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      if (results.length > 0) {
+        const addr = results[0];
+        const parts = [addr.streetNumber, addr.street, addr.district, addr.subregion ?? addr.city].filter(Boolean);
+        const formatted = parts.length > 0 ? parts.join(', ') : (addr.name ?? null);
+        if (formatted) setLocationName(formatted);
+      }
+    } catch { /* silent */ } finally {
+      setReverseGeocoding(false);
+    }
+  }
 
   async function fetchCategories() {
     try {
@@ -146,11 +184,34 @@ export default function NewRequestScreen() {
     }
   }
 
+  async function handleApplyVoucher() {
+    if (!voucherCode.trim() || !selectedTenantId) return;
+    const selectedTenant = tenants.find(t => t.tenant.id === selectedTenantId);
+    const orderAmount = selectedTenant?.pricing.price_fixed ?? selectedTenant?.pricing.price_min ?? 0;
+    setValidatingVoucher(true);
+    setVoucherError(null);
+    setVoucherResult(null);
+    try {
+      const res = await api.post<{ voucher_id: string; code: string; name: string; discount_amount: number; final_amount: number }>(
+        '/vouchers/public/validate',
+        { code: voucherCode.trim(), tenant_id: selectedTenantId, order_amount: orderAmount },
+      );
+      setVoucherResult(res);
+    } catch (e: any) {
+      setVoucherError(e.message ?? 'Mã giảm giá không hợp lệ');
+    } finally {
+      setValidatingVoucher(false);
+    }
+  }
+
   async function handleSelectTenant() {
     if (!selectedTenantId || !createdRequestId) return;
     setSelectingTenant(true);
     try {
-      await api.selectTenant(createdRequestId, selectedTenantId);
+      await api.post<{ message: string }>(`/requests/${createdRequestId}/select-tenant`, {
+        tenant_id: selectedTenantId,
+        ...(voucherResult ? { voucher_code: voucherResult.code, agreed_price: voucherResult.final_amount + voucherResult.discount_amount } : {}),
+      });
       router.replace(`/request/success?id=${createdRequestId}`);
     } catch (e: any) {
       Alert.alert('Lỗi', e.message ?? 'Không thể chọn doanh nghiệp. Vui lòng thử lại.');
@@ -326,13 +387,30 @@ export default function NewRequestScreen() {
               </View>
             )}
 
-            <TextInput
-              style={styles.locationInput}
-              placeholder="Địa chỉ cụ thể (tùy chọn): Nhà, Công ty..."
-              placeholderTextColor={COLORS.textSecondary}
-              value={locationName}
-              onChangeText={setLocationName}
-            />
+            <View style={styles.locationRow}>
+              <TextInput
+                style={[styles.locationInput, { flex: 1 }]}
+                placeholder="Địa chỉ của bạn..."
+                placeholderTextColor={COLORS.textSecondary}
+                value={locationName}
+                onChangeText={setLocationName}
+              />
+              <TouchableOpacity
+                style={styles.gpsBtn}
+                onPress={() => {
+                  if (location) reverseGeocode(location.latitude, location.longitude);
+                }}
+                disabled={reverseGeocoding || !location}
+              >
+                {reverseGeocoding
+                  ? <ActivityIndicator size="small" color={COLORS.primary} />
+                  : <Text style={styles.gpsBtnText}>📍</Text>
+                }
+              </TouchableOpacity>
+            </View>
+            {locationError && !locationCoords && (
+              <Text style={styles.locationError}>⚠️ {locationError}</Text>
+            )}
           </View>
         );
 
@@ -449,7 +527,7 @@ export default function NewRequestScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => step === 0 ? router.back() : setStep((s) => s - 1)}>
+          <TouchableOpacity onPress={() => step === 0 ? (router.canGoBack() ? router.back() : router.replace('/(tabs)' as any)) : setStep((s) => s - 1)}>
             <Text style={styles.backBtn}>← {step === 0 ? 'Hủy' : 'Quay lại'}</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{STEPS[step]}</Text>
@@ -500,8 +578,32 @@ export default function NewRequestScreen() {
           </View>
         )}
 
-        {step === 3 && tenants.length > 0 && (
+        {step === 3 && tenants.length > 0 && selectedTenantId && (
           <View style={styles.footer}>
+            {/* Voucher code input */}
+            <View style={styles.voucherRow}>
+              <TextInput
+                style={styles.voucherInput}
+                placeholder="Nhập mã giảm giá..."
+                placeholderTextColor={COLORS.textSecondary}
+                value={voucherCode}
+                onChangeText={(v) => { setVoucherCode(v.toUpperCase()); setVoucherResult(null); setVoucherError(null); }}
+                autoCapitalize="characters"
+              />
+              <TouchableOpacity
+                style={[styles.voucherBtn, (!voucherCode.trim() || validatingVoucher) && styles.disabled]}
+                onPress={handleApplyVoucher}
+                disabled={!voucherCode.trim() || validatingVoucher}
+              >
+                {validatingVoucher ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.voucherBtnText}>Áp dụng</Text>}
+              </TouchableOpacity>
+            </View>
+            {voucherError && <Text style={styles.voucherError}>{voucherError}</Text>}
+            {voucherResult && (
+              <View style={styles.voucherSuccess}>
+                <Text style={styles.voucherSuccessText}>🎟️ {voucherResult.name} — Giảm {voucherResult.discount_amount.toLocaleString('vi-VN')}₫</Text>
+              </View>
+            )}
             <TouchableOpacity
               style={[styles.nextBtn, (!selectedTenantId || selectingTenant) && styles.disabled]}
               onPress={handleSelectTenant}
@@ -512,6 +614,16 @@ export default function NewRequestScreen() {
               ) : (
                 <Text style={styles.nextBtnText}>Tiếp tục →</Text>
               )}
+            </TouchableOpacity>
+          </View>
+        )}
+        {step === 3 && tenants.length > 0 && !selectedTenantId && (
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={[styles.nextBtn, styles.disabled]}
+              disabled
+            >
+              <Text style={styles.nextBtnText}>Chọn doanh nghiệp để tiếp tục</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -644,6 +756,7 @@ const styles = StyleSheet.create({
   costLabel: { fontSize: 12, color: COLORS.textSecondary },
   costValue: { fontSize: 22, fontWeight: '800', color: COLORS.primary },
   costNote: { fontSize: 11, color: COLORS.textSecondary },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   locationInput: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
@@ -653,6 +766,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  gpsBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gpsBtnText: { fontSize: 20 },
+  locationError: { fontSize: 12, color: COLORS.error ?? '#EF4444', marginTop: -8 },
 
   // Step 3 — business selection
   businessHeader: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4, gap: 4 },
@@ -757,4 +882,38 @@ const styles = StyleSheet.create({
   },
   continueBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   disabled: { opacity: 0.45 },
+
+  // Voucher
+  voucherRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  voucherInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.text,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  voucherBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voucherBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  voucherError: { fontSize: 12, color: COLORS.error ?? '#EF4444', marginBottom: 8 },
+  voucherSuccess: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  voucherSuccessText: { fontSize: 13, color: '#166534', fontWeight: '600' },
 });

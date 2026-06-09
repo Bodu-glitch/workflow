@@ -368,6 +368,7 @@ export class StaffService {
       .eq('tenant_id', tenantId);
 
     if (error) throw new BadRequestException(error.message);
+    this.gateway.emitStaffUpdated(tenantId);
     return { status };
   }
 

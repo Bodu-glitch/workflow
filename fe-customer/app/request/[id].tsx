@@ -91,7 +91,9 @@ export default function RequestDetailScreen() {
       offStatus();
       offRequote();
     };
-  }, [id, joinRequestRoom, onLocationUpdate, onStatusChange, onRequote, setRequest]);
+  // token is included so the effect re-runs once the socket actually connects
+  // (socketRef is null on first render when auth is still loading)
+  }, [id, token, joinRequestRoom, onLocationUpdate, onStatusChange, onRequote, setRequest]);
 
   // Seed displayed status from linked task on load (request.status stays
   // pending_assignment after task creation — the live task status comes via socket)
@@ -108,6 +110,7 @@ export default function RequestDetailScreen() {
       try {
         await api.patch(`/requests/${id}/cancel`, { reason: 'Khách hàng hủy' });
         setRequest((prev) => prev ? { ...prev, status: 'cancelled' } : prev);
+        Alert.alert('Đã hủy', 'Yêu cầu của bạn đã được hủy thành công.');
       } catch (e: any) {
         Alert.alert('Lỗi', e.message);
       } finally {

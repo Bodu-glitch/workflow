@@ -90,8 +90,8 @@ export const api = {
   selectTenant: (requestId: string, tenantId: string) =>
     request<{ message: string }>('PATCH', `/requests/${requestId}/select-tenant`, { body: { tenant_id: tenantId } }),
 
-  updateProfile: (data: { full_name?: string; phone?: string }) =>
-    request<{ id: string; full_name: string; phone: string | null }>('PATCH', '/auth/profile', { body: data }),
+  updateProfile: (data: { full_name?: string; phone?: string; address?: string }) =>
+    request<{ id: string; full_name: string; phone: string | null; address: string | null }>('PATCH', '/auth/profile', { body: data }),
 
   listWorkspaces: (params: { search?: string; category?: string; page?: number } = {}) => {
     const q = new URLSearchParams();

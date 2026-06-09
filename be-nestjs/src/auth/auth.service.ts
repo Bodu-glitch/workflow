@@ -203,7 +203,7 @@ export class AuthService {
   async getProfile(userId: string, tenantId: string | null) {
     const { data: user, error } = await this.supabase.db
       .from('users')
-      .select('id, email, full_name, role, phone, avatar_url, last_login_at, created_at, is_active')
+      .select('id, email, full_name, role, phone, address, avatar_url, last_login_at, created_at, is_active')
       .eq('id', userId)
       .single();
 
@@ -285,16 +285,17 @@ export class AuthService {
     return { message: 'Device token updated' };
   }
 
-  async updateCustomerProfile(userId: string, dto: { full_name?: string; phone?: string }) {
+  async updateCustomerProfile(userId: string, dto: { full_name?: string; phone?: string; address?: string }) {
     const update: Record<string, any> = {};
     if (dto.full_name?.trim()) update.full_name = dto.full_name.trim();
     if (dto.phone !== undefined) update.phone = dto.phone.trim() || null;
+    if (dto.address !== undefined) update.address = dto.address.trim() || null;
 
     const { data, error } = await this.supabase.db
       .from('users')
       .update(update)
       .eq('id', userId)
-      .select('id, email, full_name, phone, avatar_url, role')
+      .select('id, email, full_name, phone, address, avatar_url, role')
       .single();
 
     if (error) throw new BadRequestException(error.message);

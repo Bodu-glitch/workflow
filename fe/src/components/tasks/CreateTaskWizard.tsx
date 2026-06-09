@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, TextInput, ScrollView } from '@/tw';
@@ -51,6 +52,93 @@ function FieldLabel({ children, required }: { children: string; required?: boole
     <Text className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">
       {children}{required && <Text className="text-red-500"> *</Text>}
     </Text>
+  );
+}
+
+function DatePickerButton({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [show, setShow] = useState(false);
+  const dateObj = value ? new Date(value + 'T00:00') : new Date();
+  if (Platform.OS === 'web') {
+    return (
+      <View className="flex-1">
+        <FieldLabel>{label}</FieldLabel>
+        <View className="h-14 px-4 rounded-xl justify-center" style={{ backgroundColor: '#f1f5f9' }}>
+          <input
+            type="date"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: value ? '#0f172a' : '#94a3b8', width: '100%', cursor: 'pointer' }}
+          />
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View className="flex-1">
+      <FieldLabel>{label}</FieldLabel>
+      <Pressable onPress={() => setShow(true)} className="h-14 px-4 rounded-xl justify-center active:opacity-70" style={{ backgroundColor: '#f1f5f9' }}>
+        <Text style={{ fontSize: 14, color: value ? '#0f172a' : '#94a3b8' }}>{value || 'Chọn ngày...'}</Text>
+      </Pressable>
+      {show && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          display="default"
+          onChange={(_, d) => {
+            setShow(false);
+            if (d) {
+              const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+              onChange(`${y}-${m}-${day}`);
+            }
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function TimePickerButton({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [show, setShow] = useState(false);
+  const parts = value ? value.split(':') : ['00', '00'];
+  const timeObj = new Date();
+  timeObj.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+  if (Platform.OS === 'web') {
+    return (
+      <View className="flex-1">
+        <FieldLabel>{label}</FieldLabel>
+        <View className="h-14 px-4 rounded-xl justify-center" style={{ backgroundColor: '#f1f5f9' }}>
+          <input
+            type="time"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: value ? '#0f172a' : '#94a3b8', width: '100%', cursor: 'pointer' }}
+          />
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View className="flex-1">
+      <FieldLabel>{label}</FieldLabel>
+      <Pressable onPress={() => setShow(true)} className="h-14 px-4 rounded-xl justify-center active:opacity-70" style={{ backgroundColor: '#f1f5f9' }}>
+        <Text style={{ fontSize: 14, color: value ? '#0f172a' : '#94a3b8' }}>{value || 'Chọn giờ...'}</Text>
+      </Pressable>
+      {show && (
+        <DateTimePicker
+          value={timeObj}
+          mode="time"
+          display="default"
+          is24Hour
+          onChange={(_, d) => {
+            setShow(false);
+            if (d) {
+              const h = String(d.getHours()).padStart(2, '0'), min = String(d.getMinutes()).padStart(2, '0');
+              onChange(`${h}:${min}`);
+            }
+          }}
+        />
+      )}
+    </View>
   );
 }
 
@@ -559,34 +647,22 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
 
       {/* Deadline */}
       <View className="flex-row gap-3">
-        <View className="flex-1">
-          <FieldLabel>Deadline Date</FieldLabel>
-          <TextInput
-            className="w-full h-14 px-4 rounded-xl text-on-surface text-base"
-            style={{ backgroundColor: '#f1f5f9' }}
-            placeholder="2026-05-24"
-            placeholderTextColor="#94a3b8"
-            value={step3.deadline.split('T')[0] ?? ''}
-            onChangeText={(v) => setStep3((s) => ({
-              ...s,
-              deadline: v + (s.deadline.includes('T') ? 'T' + s.deadline.split('T')[1] : 'T00:00'),
-            }))}
-          />
-        </View>
-        <View className="flex-1">
-          <FieldLabel>Deadline Time</FieldLabel>
-          <TextInput
-            className="w-full h-14 px-4 rounded-xl text-on-surface text-base"
-            style={{ backgroundColor: '#f1f5f9' }}
-            placeholder="14:30"
-            placeholderTextColor="#94a3b8"
-            value={step3.deadline.includes('T') ? step3.deadline.split('T')[1] : ''}
-            onChangeText={(v) => setStep3((s) => ({
-              ...s,
-              deadline: (s.deadline.split('T')[0] ?? '') + 'T' + v,
-            }))}
-          />
-        </View>
+        <DatePickerButton
+          label="Deadline Date"
+          value={step3.deadline.split('T')[0] ?? ''}
+          onChange={(v) => setStep3((s) => ({
+            ...s,
+            deadline: v + (s.deadline.includes('T') ? 'T' + s.deadline.split('T')[1] : 'T00:00'),
+          }))}
+        />
+        <TimePickerButton
+          label="Deadline Time"
+          value={step3.deadline.includes('T') ? step3.deadline.split('T')[1] : ''}
+          onChange={(v) => setStep3((s) => ({
+            ...s,
+            deadline: (s.deadline.split('T')[0] ?? '') + 'T' + v,
+          }))}
+        />
       </View>
 
       {/* Service Type */}
