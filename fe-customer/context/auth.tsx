@@ -18,6 +18,7 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -131,8 +132,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ user: null, token: null, loading: false });
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) return;
+    try {
+      const profile = await api.get<any>('/customer/profile');
+      setState(prev => ({ ...prev, user: profile }));
+    } catch {}
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ ...state, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ ...state, loginWithGoogle, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

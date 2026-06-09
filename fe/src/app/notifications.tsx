@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable } from '@/tw';
 import { notificationsApi } from '@/lib/api/notifications';
+import { useSocket } from '@/hooks/useSocket';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 import { useAuth } from '@/context/auth';
@@ -97,21 +99,51 @@ function NotificationItem({
   );
 }
 
+function getRequestRoute(requestId: string, role: string | null) {
+  if (role === 'business_owner') return { pathname: '/(bo)/requests/[id]' as const, params: { id: requestId } };
+  if (role === 'operator') return { pathname: '/(ot)/requests/[id]' as const, params: { id: requestId } };
+  return null;
+}
+
+function getSupportRoute(role: string | null) {
+  if (role === 'business_owner') return '/(bo)/support' as const;
+  if (role === 'operator') return '/(ot)/support' as const;
+  return null;
+}
+
 function getTaskRoute(taskId: string, role: string | null) {
-  if (role === 'business_owner') return `/(bo)/tasks/${taskId}` as const;
-  if (role === 'operator') return `/(ot)/tasks/${taskId}` as const;
-  if (role === 'staff') return `/(staff)/tasks/${taskId}` as const;
+  if (role === 'business_owner') return { pathname: '/(bo)/tasks/[id]' as const, params: { id: taskId } };
+  if (role === 'operator') return { pathname: '/(ot)/tasks/[id]' as const, params: { id: taskId } };
+  if (role === 'staff') return { pathname: '/(staff)/tasks/[id]' as const, params: { id: taskId } };
   return null;
 }
 
 export default function NotificationCenterScreen() {
   const { role } = useAuth();
   const qc = useQueryClient();
+  const { onNotification } = useSocket();
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => notificationsApi.list(),
   });
+
+  // Real-time: new notification arrives via socket → prepend to list
+  useEffect(() => {
+    const off = onNotification((notif) => {
+      qc.setQueryData<typeof data>(['notifications'], (old) => {
+        if (!old) return old;
+        const newNotif = { ...(notif as Notification), is_read: false };
+        return {
+          ...old,
+          data: [newNotif, ...(old.data ?? [])],
+        };
+      });
+      // Also bump unread count
+      qc.invalidateQueries({ queryKey: ['unread-count'] });
+    });
+    return off;
+  }, [onNotification, qc]);
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),
@@ -130,9 +162,22 @@ export default function NotificationCenterScreen() {
   });
 
   const handleNavigate = (item: Notification) => {
-    if (!item.task_id) return;
-    const route = getTaskRoute(item.task_id, role);
-    if (route) router.push(route);
+    // request_id → navigate to request detail (support_ticket_created also links to support list)
+    if (item.type === 'support_ticket_created') {
+      const route = getSupportRoute(role);
+      if (route) router.push(route);
+      return;
+    }
+    if (item.request_id) {
+      const route = getRequestRoute(item.request_id, role);
+      if (route) router.push(route as any);
+      return;
+    }
+    // Legacy task_id navigation
+    if (item.task_id) {
+      const route = getTaskRoute(item.task_id, role);
+      if (route) router.push(route as any);
+    }
   };
 
   if (isLoading) return <LoadingScreen />;

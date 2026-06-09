@@ -1,6 +1,6 @@
 import {
   Controller, Get, Patch, Post, Put,
-  Body, UseGuards, UseInterceptors, UploadedFile,
+  Body, Param, UseGuards, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WorkspaceService } from './workspace.service.js';
@@ -91,5 +91,39 @@ export class WorkspaceController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.workspaceService.updateLogo(user.tenant_id, file);
+  }
+
+  /** GET /workspace/payment-info — BO/OT: thông tin thanh toán */
+  @Get('payment-info')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner', 'operator')
+  getPaymentInfo(@CurrentUser() user: CurrentUserType) {
+    return this.workspaceService.getPaymentInfo(user.tenant_id);
+  }
+
+  /** PATCH /workspace/payment-info — BO: cập nhật thông tin ngân hàng + commission */
+  @Patch('payment-info')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner')
+  updatePaymentInfo(@CurrentUser() user: CurrentUserType, @Body() dto: any) {
+    return this.workspaceService.updatePaymentInfo(user.tenant_id, dto);
+  }
+
+  /** POST /workspace/payment-qr — BO: upload QR ảnh */
+  @Post('payment-qr')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadPaymentQr(
+    @CurrentUser() user: CurrentUserType,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.workspaceService.uploadPaymentQr(user.tenant_id, file);
+  }
+
+  /** GET /workspace/public-payment/:tenantId — Public: lấy QR cho customer + staff */
+  @Get('public-payment/:tenantId')
+  getPublicPaymentInfo(@Param('tenantId') tenantId: string) {
+    return this.workspaceService.getPublicPaymentInfo(tenantId);
   }
 }

@@ -68,4 +68,33 @@ export const technicianApi = {
       method: 'PATCH',
       body: JSON.stringify({ is_online: isOnline }),
     }),
+
+  getEarnings: (period: 'day' | 'week' | 'month') =>
+    apiFetch<{
+      data: {
+        summary: {
+          total_jobs: number;
+          total_gross: number;
+          total_earning: number;
+          avg_rating: number | null;
+        };
+        jobs: Array<{
+          id: string;
+          description: string;
+          agreed_price: number;
+          final_amount: number | null;
+          collected_amount: number | null;
+          staff_earning: number;
+          rating: number | null;
+          completed_at: string;
+          category: { name: string } | null;
+        }>;
+      };
+    }>(`/technician/earnings?period=${period}`),
+
+  updateChecklist: (id: string, checklist: Array<{ id: string; name: string; price: number; checked: boolean }>) =>
+    apiFetch<{ data: any }>(`/technician/jobs/${id}/checklist`, {
+      method: 'PATCH',
+      body: JSON.stringify({ checklist }),
+    }),
 };

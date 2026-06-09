@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rescuenow.customer"
+      "bundleIdentifier": "com.rescuenow.customer",
+      "config": {
+        "googleMapsApiKey": "AIzaSyBKe-ICXblspXDmicSi0NVuQmdsZ3LS_w0"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +27,12 @@
       },
       "package": "com.rescuenow.customer",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBKe-ICXblspXDmicSi0NVuQmdsZ3LS_w0"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png",

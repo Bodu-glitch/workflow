@@ -33,6 +33,25 @@ export class PricingService {
   }
 
   async createPricing(dto: CreatePricingDto, user: CurrentUser) {
+    // Quy tắc: 1 công ty chỉ được làm 1 lĩnh vực (1 category)
+    // Kiểm tra xem tenant đã có pricing với category khác chưa
+    if (dto.category_id) {
+      const { data: existingPricings } = await this.supabase.db
+        .from('service_pricings')
+        .select('category_id')
+        .eq('tenant_id', user.tenant_id!)
+        .eq('is_active', true)
+        .neq('category_id', dto.category_id)
+        .limit(1);
+
+      if (existingPricings && existingPricings.length > 0) {
+        throw new BadRequestException({
+          code: 'SINGLE_INDUSTRY_CONSTRAINT',
+          message: 'Doanh nghiệp chỉ được đăng ký dịch vụ trong 1 lĩnh vực. Vui lòng xóa pricing của lĩnh vực hiện tại trước khi thêm lĩnh vực mới.',
+        });
+      }
+    }
+
     const { data, error } = await this.supabase.db
       .from('service_pricings')
       .insert({

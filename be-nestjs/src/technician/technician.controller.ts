@@ -107,4 +107,23 @@ export class TechnicianController {
   updateLocation(@Body() dto: UpdateLocationDto, @CurrentUser() user: CurrentUserType) {
     return this.service.updateLocation(dto, user);
   }
+
+  /** GET /technician/earnings?period=day|week|month — Thu nhập nhân viên */
+  @Get('earnings')
+  getEarnings(
+    @CurrentUser() user: CurrentUserType,
+    @Query('period') period: 'day' | 'week' | 'month',
+  ) {
+    return this.service.getEarnings(user, period ?? 'month');
+  }
+
+  /** PATCH /technician/jobs/:id/checklist — cập nhật checklist dịch vụ */
+  @Patch('jobs/:id/checklist')
+  updateChecklist(
+    @Param('id') id: string,
+    @Body('checklist') checklist: any[],
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.service.updateChecklist(id, checklist, user);
+  }
 }

@@ -25,6 +25,11 @@ import { ChatModule } from './chat/chat.module.js';
 import { GatewayModule } from './gateway/gateway.module.js';
 import { WorkspaceModule } from './workspace/workspace.module.js';
 import { WorkScheduleModule } from './work-schedule/work-schedule.module.js';
+// New feature modules
+import { VouchersModule } from './vouchers/vouchers.module.js';
+import { CustomerModule } from './customer/customer.module.js';
+import { SupportModule } from './support/support.module.js';
+import { KnowledgeModule } from './knowledge/knowledge.module.js';
 
 @Module({
   imports: [
@@ -53,6 +58,11 @@ import { WorkScheduleModule } from './work-schedule/work-schedule.module.js';
     GatewayModule,
     WorkspaceModule,
     WorkScheduleModule,
+    // New feature modules
+    VouchersModule,
+    CustomerModule,
+    SupportModule,
+    KnowledgeModule,
   ],
 })
 export class AppModule implements NestModule {

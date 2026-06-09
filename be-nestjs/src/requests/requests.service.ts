@@ -584,4 +584,188 @@ export class RequestsService {
       throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Access denied' });
     }
   }
+
+  /** Tạo hóa đơn PDF cho request */
+  async generateInvoicePdf(id: string, user: CurrentUser): Promise<Buffer> {
+    const { data: request, error } = await this.supabase.db
+      .from('service_requests')
+      .select(`
+        *,
+        customer:customer_id(full_name, phone, email),
+        category:category_id(name),
+        tenant:tenant_id(name, bank_name, bank_account, bank_account_name),
+        staff:assigned_staff_id(full_name, phone),
+        voucher:applied_voucher_id(code, type, value)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error || !request) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Request not found' });
+    this.enforceAccess(request, user);
+
+    const PDFDocument = (await import('pdfkit')).default;
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const buffers: Buffer[] = [];
+    doc.on('data', (chunk: Buffer) => buffers.push(chunk));
+
+    await new Promise<void>((resolve) => {
+      doc.on('end', resolve);
+
+      // Header
+      doc.fontSize(20).font('Helvetica-Bold').text('HÓA ĐƠN DỊCH VỤ', { align: 'center' });
+      doc.fontSize(10).font('Helvetica').text(`Mã đơn: ${id.substring(0, 8).toUpperCase()}`, { align: 'center' });
+      doc.moveDown(0.5);
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+      doc.moveDown(0.5);
+
+      // Thông tin dịch vụ
+      const fmt = (n: number) => n.toLocaleString('vi-VN') + 'đ';
+      const grossAmount = request.collected_amount ?? request.final_amount ?? request.agreed_price ?? 0;
+      const discount = request.discount_amount ?? 0;
+      const finalAmount = request.final_amount ?? (grossAmount - discount);
+
+      doc.fontSize(12).font('Helvetica-Bold').text('THÔNG TIN DỊCH VỤ');
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Dịch vụ: ${request.category?.name ?? 'N/A'}`);
+      doc.text(`Mô tả: ${request.description ?? ''}`);
+      doc.text(`Thời gian hoàn thành: ${request.completed_at ? new Date(request.completed_at).toLocaleString('vi-VN') : 'N/A'}`);
+      doc.moveDown(0.5);
+
+      doc.fontSize(12).font('Helvetica-Bold').text('KHÁCH HÀNG');
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Tên: ${request.customer?.full_name ?? 'N/A'}`);
+      doc.text(`Điện thoại: ${request.customer?.phone ?? 'N/A'}`);
+      doc.moveDown(0.5);
+
+      doc.fontSize(12).font('Helvetica-Bold').text('NHÀ CUNG CẤP');
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Công ty: ${request.tenant?.name ?? 'N/A'}`);
+      doc.text(`Kỹ thuật viên: ${request.staff?.full_name ?? 'N/A'}`);
+      doc.moveDown(0.5);
+
+      // Bảng giá
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+      doc.moveDown(0.3);
+      doc.fontSize(12).font('Helvetica-Bold').text('CHI PHÍ');
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Giá dịch vụ:`, { continued: true }).text(` ${fmt(grossAmount)}`, { align: 'right' });
+
+      if (discount > 0) {
+        doc.text(`Giảm giá (${request.voucher?.code ?? 'voucher'}):`, { continued: true })
+          .text(` -${fmt(discount)}`, { align: 'right' });
+      }
+
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+      doc.moveDown(0.3);
+      doc.fontSize(12).font('Helvetica-Bold');
+      doc.text(`TỔNG CỘNG:`, { continued: true }).text(` ${fmt(finalAmount)}`, { align: 'right' });
+      doc.moveDown(1);
+
+      // Footer
+      doc.fontSize(9).font('Helvetica').fillColor('#666666')
+        .text('Cảm ơn quý khách đã sử dụng dịch vụ!', { align: 'center' });
+
+      doc.end();
+    });
+
+    return Buffer.concat(buffers);
+  }
+
+  /** Customer áp dụng voucher cho request */
+  async applyVoucher(requestId: string, voucherId: string, user: CurrentUser) {
+    // Lấy request
+    const { data: request, error: reqErr } = await this.supabase.db
+      .from('service_requests')
+      .select('id, customer_id, tenant_id, status, agreed_price, final_amount')
+      .eq('id', requestId)
+      .single();
+
+    if (reqErr || !request) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Request not found' });
+    if (request.customer_id !== user.id) throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Không có quyền' });
+
+    // Lấy voucher — phải thuộc tenant của request
+    const { data: voucher, error: vcErr } = await this.supabase.db
+      .from('vouchers')
+      .select('id, code, type, value, max_discount, min_order_value, usage_limit, usage_count, is_active, ends_at, tenant_id')
+      .eq('id', voucherId)
+      .single();
+
+    if (vcErr || !voucher) throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Voucher không tồn tại' });
+    if (!voucher.is_active) throw new BadRequestException({ code: 'VOUCHER_INACTIVE', message: 'Voucher không còn hiệu lực' });
+    if (voucher.tenant_id !== request.tenant_id) throw new BadRequestException({ code: 'VOUCHER_INVALID', message: 'Voucher không thuộc doanh nghiệp này' });
+    if (voucher.ends_at && new Date(voucher.ends_at) < new Date()) {
+      throw new BadRequestException({ code: 'VOUCHER_EXPIRED', message: 'Voucher đã hết hạn' });
+    }
+    if (voucher.usage_limit != null && voucher.usage_count >= voucher.usage_limit) {
+      throw new BadRequestException({ code: 'VOUCHER_USED_UP', message: 'Voucher đã hết lượt dùng' });
+    }
+
+    // Tính giảm giá (dựa trên agreed_price nếu có, hoặc ghi nhận cho sau)
+    const basePrice = request.agreed_price ?? request.final_amount ?? 0;
+    let discount = 0;
+    if (basePrice > 0) {
+      if (voucher.type === 'percent') {
+        discount = Math.round(basePrice * voucher.value / 100);
+        if (voucher.max_discount) discount = Math.min(discount, voucher.max_discount);
+      } else {
+        discount = Math.min(voucher.value, basePrice);
+      }
+    }
+
+    // Ghi nhận voucher vào request
+    const { error: updateErr } = await this.supabase.db
+      .from('service_requests')
+      .update({
+        applied_voucher_id: voucherId,
+        discount_amount: discount > 0 ? discount : null,
+        final_amount: basePrice > 0 ? Math.max(0, basePrice - discount) : null,
+      })
+      .eq('id', requestId);
+
+    if (updateErr) throw new BadRequestException(updateErr.message);
+
+    // Tăng usage_count
+    await this.supabase.db
+      .from('vouchers')
+      .update({ usage_count: voucher.usage_count + 1 })
+      .eq('id', voucherId);
+
+    return {
+      voucher_code: voucher.code,
+      discount_amount: discount,
+      base_price: basePrice,
+      final_amount: basePrice > 0 ? Math.max(0, basePrice - discount) : null,
+      message: 'Voucher đã được áp dụng thành công',
+    };
+  }
+
+  /** Customer đánh giá request */
+  async rateRequest(id: string, dto: { score: number; comment?: string }, user: CurrentUser) {
+    const { data: request } = await this.supabase.db
+      .from('service_requests')
+      .select('customer_id, assigned_staff_id, status')
+      .eq('id', id)
+      .single();
+
+    if (!request) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Request not found' });
+    if (request.customer_id !== user.id) throw new ForbiddenException();
+    if (!['completed', 'completed_late'].includes(request.status)) {
+      throw new BadRequestException({ code: 'INVALID_STATUS', message: 'Chỉ có thể đánh giá sau khi hoàn thành' });
+    }
+
+    const { data, error } = await this.supabase.db
+      .from('ratings')
+      .upsert({
+        request_id: id,
+        customer_id: user.id,
+        staff_id: request.assigned_staff_id,
+        score: dto.score,
+        comment: dto.comment ?? null,
+      }, { onConflict: 'request_id' })
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
 }

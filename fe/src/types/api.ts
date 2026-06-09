@@ -188,6 +188,7 @@ export interface Notification {
   title: string;
   body: string;
   task_id: string | null;
+  request_id: string | null;
   is_read: boolean;
   data: Record<string, unknown>;
   created_at: string;

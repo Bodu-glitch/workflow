@@ -3,6 +3,7 @@ export const WS_EVENTS = {
   LOCATION_UPDATE: 'location:update',
   CHAT_SEND: 'chat:send',
   JOIN_REQUEST: 'join:request',
+  JOIN_TICKET: 'join:ticket',
   PING: 'ping',
 
   // Server → Client
@@ -15,6 +16,9 @@ export const WS_EVENTS = {
   JOB_ASSIGNED: 'job:assigned',
   JOB_CANCELLED: 'job:cancelled',
   STAFF_POOL_UPDATED: 'staff:pool_updated',
+  STAFF_STATUS_CHANGED: 'staff:status_changed',
+  SUPPORT_MESSAGE: 'support:message',
+  NOTIFICATION_NEW: 'notification:new',
   ERROR: 'error',
   PONG: 'pong',
 } as const;
@@ -41,4 +45,13 @@ export function staffRoom(userId: string) {
 
 export function customerRoom(userId: string) {
   return `customer:${userId}`;
+}
+
+export function ticketRoom(ticketId: string) {
+  return `ticket:${ticketId}`;
+}
+
+/** Per-user notification room — all roles */
+export function userRoom(userId: string) {
+  return `user:${userId}`;
 }

@@ -6,9 +6,11 @@ interface Props {
   categories: Category[];
   selected: string | null;
   onSelect: (id: string) => void;
+  /** Optional: render extra content inside each card (e.g., reference price) */
+  renderExtra?: (cat: Category) => React.ReactNode;
 }
 
-export function CategoryPicker({ categories, selected, onSelect }: Props) {
+export function CategoryPicker({ categories, selected, onSelect, renderExtra }: Props) {
   return (
     <View style={styles.grid}>
       {categories.map((cat) => {
@@ -23,6 +25,7 @@ export function CategoryPicker({ categories, selected, onSelect }: Props) {
             <Text style={[styles.name, isSelected && styles.nameSelected]} numberOfLines={2}>
               {cat.name}
             </Text>
+            {renderExtra ? renderExtra(cat) : null}
             {isSelected && <View style={styles.checkmark}><Text style={styles.checkmarkText}>✓</Text></View>}
           </TouchableOpacity>
         );
@@ -38,7 +41,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     width: '30%',
     borderWidth: 2,
     borderColor: 'transparent',

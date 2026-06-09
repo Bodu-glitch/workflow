@@ -1,7 +1,8 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query,
+  Controller, Get, Post, Patch, Body, Param, Query, Res,
   UseGuards, UseInterceptors, UploadedFiles,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RequestsService } from './requests.service.js';
@@ -147,5 +148,45 @@ export class RequestsController {
     @CurrentUser() user: CurrentUserType,
   ) {
     return this.service.assignStaff(id, dto, user);
+  }
+
+  /** GET /requests/:id/invoice — xuất hóa đơn PDF */
+  @Get(':id/invoice')
+  async getInvoice(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserType,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.service.generateInvoicePdf(id, user);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="invoice-${id.substring(0, 8)}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
+  }
+
+  /** POST /requests/:id/apply-voucher — customer áp dụng voucher */
+  @Post(':id/apply-voucher')
+  @UseGuards(RolesGuard)
+  @Roles('customer')
+  applyVoucher(
+    @Param('id') id: string,
+    @Body() dto: { voucher_id: string },
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.service.applyVoucher(id, dto.voucher_id, user);
+  }
+
+  /** POST /requests/:id/rate — customer đánh giá (alias cho ratings module) */
+  @Post(':id/rate')
+  @UseGuards(RolesGuard)
+  @Roles('customer')
+  rateRequest(
+    @Param('id') id: string,
+    @Body() dto: { score: number; comment?: string },
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.service.rateRequest(id, dto, user);
   }
 }

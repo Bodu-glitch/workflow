@@ -176,4 +176,70 @@ export class WorkspaceService {
     if (error) throw new BadRequestException(error.message);
     return data;
   }
+
+  /** GET /workspace/payment-info — Lấy thông tin QR thanh toán */
+  async getPaymentInfo(tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('tenants')
+      .select('id, qr_payment_url, bank_name, bank_account, bank_account_name')
+      .eq('id', tenantId)
+      .single();
+    if (error || !data) throw new NotFoundException('Workspace not found');
+    return data;
+  }
+
+  /** PATCH /workspace/payment-info — BO: cập nhật thông tin ngân hàng */
+  async updatePaymentInfo(tenantId: string, dto: {
+    bank_name?: string;
+    bank_account?: string;
+    bank_account_name?: string;
+    commission_platform_percent?: number;
+    commission_staff_percent?: number;
+  }) {
+    const { data, error } = await this.supabase.db
+      .from('tenants')
+      .update({ ...dto, updated_at: new Date().toISOString() })
+      .eq('id', tenantId)
+      .select('id, bank_name, bank_account, bank_account_name, commission_platform_percent, commission_staff_percent')
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  /** POST /workspace/payment-qr — BO: upload ảnh QR ngân hàng */
+  async uploadPaymentQr(tenantId: string, file: Express.Multer.File) {
+    const ext = file.originalname.split('.').pop() ?? 'jpg';
+    const path = `${tenantId}/qr.${ext}`;
+
+    const { error: uploadError } = await this.supabase.db.storage
+      .from('payment-qr')
+      .upload(path, file.buffer, { contentType: file.mimetype, upsert: true });
+
+    if (uploadError) throw new BadRequestException(uploadError.message);
+
+    const { data: { publicUrl } } = this.supabase.db.storage
+      .from('payment-qr')
+      .getPublicUrl(path);
+
+    const { data, error } = await this.supabase.db
+      .from('tenants')
+      .update({ qr_payment_url: publicUrl, updated_at: new Date().toISOString() })
+      .eq('id', tenantId)
+      .select('id, qr_payment_url')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  /** Public: lấy payment info công khai (cho customer + staff) */
+  async getPublicPaymentInfo(tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('tenants')
+      .select('id, name, qr_payment_url, bank_name, bank_account, bank_account_name')
+      .eq('id', tenantId)
+      .single();
+    if (error || !data) throw new NotFoundException('Workspace not found');
+    return data;
+  }
 }
