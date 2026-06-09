@@ -2,7 +2,7 @@
 -- Enums
 -- ============================================================
 CREATE TYPE user_role AS ENUM ('superadmin', 'business_owner', 'operator', 'staff');
-CREATE TYPE task_status AS ENUM ('todo', 'in_progress', 'done', 'cancelled', 'rejected');
+CREATE TYPE task_status AS ENUM ('todo', 'moving', 'arrived', 'in_progress', 'done', 'cancelled', 'rejected');
 CREATE TYPE task_priority AS ENUM ('low', 'medium', 'high', 'urgent');
 CREATE TYPE invitation_status AS ENUM ('pending', 'accepted', 'cancelled', 'expired');
 CREATE TYPE invitation_delivery AS ENUM ('email', 'in_app');

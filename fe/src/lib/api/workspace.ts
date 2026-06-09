@@ -83,6 +83,7 @@ export const workspaceApi = {
     return json;
   },
 
+
   /** POST /workspace/logo — BO only */
   updateLogo: async (file: { uri: string; name: string; type: string }): Promise<{ data: { id: string; logo_url: string } }> => {
     const token = await tokenStore.get();

@@ -97,4 +97,10 @@ export const technicianApi = {
       method: 'PATCH',
       body: JSON.stringify({ checklist }),
     }),
+
+  updateLocation: (lat: number, lng: number, accuracy_m?: number, heading?: number, speed_mps?: number) =>
+    apiFetch<{ message: string }>('/technician/location', {
+      method: 'POST',
+      body: JSON.stringify({ lat, lng, accuracy_m, heading, speed_mps }),
+    }),
 };

@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Post, Delete,
+  Controller, Get, Patch, Post, Put, Delete,
   Query, Body, Param, UseGuards, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -68,6 +68,25 @@ export class MeController {
     return this.meService.deleteCertificate(user.id, id);
   }
 
+  @Get('workspace/services')
+  getWorkspaceServices(@CurrentUser() user: CurrentUserType) {
+    return this.meService.getWorkspaceServices(user.tenant_id);
+  }
+
+  @Get('workspace/payment')
+  getPaymentInfo(@CurrentUser() user: CurrentUserType) {
+    return this.meService.getPaymentInfo(user.tenant_id);
+  }
+
+  /** GET /me/tasks/pool — unassigned tasks in tenant. MUST be before /me/tasks */
+  @Get('tasks/pool')
+  getPoolTasks(
+    @CurrentUser() user: CurrentUserType,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.meService.getPoolTasks(user, pagination);
+  }
+
   /** GET /me/tasks/history — MUST be before /me/tasks */
   @Get('tasks/history')
   getMyTaskHistory(
@@ -75,6 +94,57 @@ export class MeController {
     @Query() pagination: PaginationDto,
   ) {
     return this.meService.getMyTaskHistory(user, pagination);
+  }
+
+  @Post('tasks/:id/start')
+  startMoving(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.meService.startMoving(id, user);
+  }
+
+  @Post('tasks/:id/arrive')
+  markArrived(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.meService.markArrived(id, user);
+  }
+
+  @Post('tasks/:id/begin')
+  beginWork(
+    @Param('id') id: string,
+    @Body('gps_lat') gpsLat: number,
+    @Body('gps_lng') gpsLng: number,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.meService.beginWork(id, user, Number(gpsLat), Number(gpsLng));
+  }
+
+  /** POST /me/tasks/:id/claim — Staff self-assigns from pool. MUST be before /me/tasks */
+  @Post('tasks/:id/claim')
+  claimPoolTask(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.meService.claimPoolTask(id, user);
+  }
+
+  @Post('tasks/:id/reject')
+  rejectTask(
+    @Param('id') id: string,
+    @Body('reason') reason: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.meService.rejectTask(id, reason, user);
+  }
+
+  @Get('tasks/:id/items')
+  getTaskItems(@Param('id') id: string) {
+    return this.meService.getTaskItems(id);
+  }
+
+  @Put('tasks/:id/items')
+  saveTaskItems(
+    @Param('id') id: string,
+    @Body() body: { items: any[] },
+  ) {
+    return this.meService.saveTaskItems(id, body.items);
   }
 
   @Get('tasks')

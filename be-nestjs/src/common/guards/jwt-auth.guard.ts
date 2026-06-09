@@ -46,7 +46,8 @@ export class JwtAuthGuard implements CanActivate {
       if (!membership) throw new UnauthorizedException();
       req.user = { id: user.id, email: user.email, role: (membership as any).role, tenant_id: tenantId };
     } else {
-      req.user = { id: user.id, email: user.email, role: null, tenant_id: null };
+      // No tenant context — use the user's own role from DB (covers 'customer' role)
+      req.user = { id: user.id, email: user.email, role: dbUser?.role ?? null, tenant_id: null };
     }
 
     return true;

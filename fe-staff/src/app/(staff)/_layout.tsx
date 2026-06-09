@@ -32,6 +32,7 @@ export default function StaffLayout() {
         <NativeTabs.Trigger.Label>Thu nhập</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
+
       <NativeTabs.Trigger name="history" disableTransparentOnScrollEdge>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'clock.arrow.circlepath', selected: 'clock.arrow.circlepath' }}

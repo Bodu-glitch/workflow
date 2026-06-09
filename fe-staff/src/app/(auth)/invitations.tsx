@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView } from '@/tw';
 import { useAuth } from '@/context/auth';
+import { useSocketContext } from '@/context/socket';
 import { staffApi } from '@/lib/api/staff';
 import type { InAppInvitation } from '@/types/api';
 
@@ -28,7 +29,8 @@ function formatExpiry(dateStr: string): string {
 }
 
 export default function InvitationsScreen() {
-  const { refreshProfile, selectTenant } = useAuth();
+  const { refreshProfile, selectTenant, user } = useAuth();
+  const socket = useSocketContext();
   const router = useRouter();
   const [invitations, setInvitations] = useState<InAppInvitation[]>([]);
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -46,6 +48,15 @@ export default function InvitationsScreen() {
   }, []);
 
   useEffect(() => { fetchInvitations(); }, [fetchInvitations]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (data: any) => {
+      if (data?.type === 'invitation_received') fetchInvitations();
+    };
+    socket.on('notification:new', handler);
+    return () => { socket.off('notification:new', handler); };
+  }, [socket, fetchInvitations]);
 
   async function navigateForward() {
     await refreshProfile();

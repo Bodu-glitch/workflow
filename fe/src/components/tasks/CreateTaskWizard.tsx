@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, TextInput, ScrollView } from '@/tw';
@@ -51,6 +52,93 @@ function FieldLabel({ children, required }: { children: string; required?: boole
     <Text className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">
       {children}{required && <Text className="text-red-500"> *</Text>}
     </Text>
+  );
+}
+
+function DatePickerButton({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [show, setShow] = useState(false);
+  const dateObj = value ? new Date(value + 'T00:00') : new Date();
+  if (Platform.OS === 'web') {
+    return (
+      <View className="flex-1">
+        <FieldLabel>{label}</FieldLabel>
+        <View className="h-14 px-4 rounded-xl justify-center" style={{ backgroundColor: '#f1f5f9' }}>
+          <input
+            type="date"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: value ? '#0f172a' : '#94a3b8', width: '100%', cursor: 'pointer' }}
+          />
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View className="flex-1">
+      <FieldLabel>{label}</FieldLabel>
+      <Pressable onPress={() => setShow(true)} className="h-14 px-4 rounded-xl justify-center active:opacity-70" style={{ backgroundColor: '#f1f5f9' }}>
+        <Text style={{ fontSize: 14, color: value ? '#0f172a' : '#94a3b8' }}>{value || 'Chọn ngày...'}</Text>
+      </Pressable>
+      {show && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          display="default"
+          onChange={(_, d) => {
+            setShow(false);
+            if (d) {
+              const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+              onChange(`${y}-${m}-${day}`);
+            }
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function TimePickerButton({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [show, setShow] = useState(false);
+  const parts = value ? value.split(':') : ['00', '00'];
+  const timeObj = new Date();
+  timeObj.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+  if (Platform.OS === 'web') {
+    return (
+      <View className="flex-1">
+        <FieldLabel>{label}</FieldLabel>
+        <View className="h-14 px-4 rounded-xl justify-center" style={{ backgroundColor: '#f1f5f9' }}>
+          <input
+            type="time"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: value ? '#0f172a' : '#94a3b8', width: '100%', cursor: 'pointer' }}
+          />
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View className="flex-1">
+      <FieldLabel>{label}</FieldLabel>
+      <Pressable onPress={() => setShow(true)} className="h-14 px-4 rounded-xl justify-center active:opacity-70" style={{ backgroundColor: '#f1f5f9' }}>
+        <Text style={{ fontSize: 14, color: value ? '#0f172a' : '#94a3b8' }}>{value || 'Chọn giờ...'}</Text>
+      </Pressable>
+      {show && (
+        <DateTimePicker
+          value={timeObj}
+          mode="time"
+          display="default"
+          is24Hour
+          onChange={(_, d) => {
+            setShow(false);
+            if (d) {
+              const h = String(d.getHours()).padStart(2, '0'), min = String(d.getMinutes()).padStart(2, '0');
+              onChange(`${h}:${min}`);
+            }
+          }}
+        />
+      )}
+    </View>
   );
 }
 
@@ -238,13 +326,17 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
         customerNote: existingTask.customer_note ?? '',
       });
 
+      const deadlineLocal = (() => {
+        if (!existingTask.deadline) return '';
+        const d = new Date(existingTask.deadline);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      })();
       setStep3({
         location: existingTask.location_lat != null
           ? { name: existingTask.location_name ?? '', lat: existingTask.location_lat, lng: existingTask.location_lng! }
           : null,
-        deadline: existingTask.deadline
-          ? existingTask.deadline.replace('Z', '').substring(0, 16)
-          : '',
+        deadline: deadlineLocal,
         serviceType: existingTask.service_type ?? '',
         area: existingTask.area ?? '',
       });
@@ -512,14 +604,14 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
 
   // ── Step 3 ──
   const renderStep3 = () => (
-    <ScrollView className="flex-1" contentContainerClassName="px-5 py-5 gap-5">
+    <ScrollView className="flex-1" contentContainerClassName="px-5 py-5 gap-5" contentContainerStyle={{ paddingBottom: 20 }}>
       <Text className="text-2xl font-extrabold text-on-surface">Select Location</Text>
 
       {/* Map preview / picker */}
       <Pressable
         onPress={() => setShowLocationPicker(true)}
         className="rounded-2xl overflow-hidden active:opacity-80"
-        style={{ height: 180, backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' }}
+        style={{ height: 120, backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' }}
       >
         {step3.location ? (
           <View className="w-full h-full items-center justify-center gap-2">
@@ -555,34 +647,22 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
 
       {/* Deadline */}
       <View className="flex-row gap-3">
-        <View className="flex-1">
-          <FieldLabel>Deadline Date</FieldLabel>
-          <TextInput
-            className="w-full h-14 px-4 rounded-xl text-on-surface text-base"
-            style={{ backgroundColor: '#f1f5f9' }}
-            placeholder="2026-05-24"
-            placeholderTextColor="#94a3b8"
-            value={step3.deadline.split('T')[0] ?? ''}
-            onChangeText={(v) => setStep3((s) => ({
-              ...s,
-              deadline: v + (s.deadline.includes('T') ? 'T' + s.deadline.split('T')[1] : 'T00:00'),
-            }))}
-          />
-        </View>
-        <View className="flex-1">
-          <FieldLabel>Deadline Time</FieldLabel>
-          <TextInput
-            className="w-full h-14 px-4 rounded-xl text-on-surface text-base"
-            style={{ backgroundColor: '#f1f5f9' }}
-            placeholder="14:30"
-            placeholderTextColor="#94a3b8"
-            value={step3.deadline.includes('T') ? step3.deadline.split('T')[1] : ''}
-            onChangeText={(v) => setStep3((s) => ({
-              ...s,
-              deadline: (s.deadline.split('T')[0] ?? '') + 'T' + v,
-            }))}
-          />
-        </View>
+        <DatePickerButton
+          label="Deadline Date"
+          value={step3.deadline.split('T')[0] ?? ''}
+          onChange={(v) => setStep3((s) => ({
+            ...s,
+            deadline: v + (s.deadline.includes('T') ? 'T' + s.deadline.split('T')[1] : 'T00:00'),
+          }))}
+        />
+        <TimePickerButton
+          label="Deadline Time"
+          value={step3.deadline.includes('T') ? step3.deadline.split('T')[1] : ''}
+          onChange={(v) => setStep3((s) => ({
+            ...s,
+            deadline: (s.deadline.split('T')[0] ?? '') + 'T' + v,
+          }))}
+        />
       </View>
 
       {/* Service Type */}
@@ -611,7 +691,6 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
         </View>
       </View>
 
-      <View className="h-20" />
     </ScrollView>
   );
 
@@ -657,24 +736,24 @@ export function CreateTaskWizard({ route, taskId }: CreateTaskWizardProps) {
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
+
+          {/* Bottom button — in normal flow so ScrollView doesn't extend behind it */}
+          <View className="px-5 pb-10 pt-3 bg-surface border-t border-surface-container">
+            <Pressable
+              onPress={handleNext}
+              disabled={activeMutation.isPending}
+              className="h-14 rounded-2xl items-center justify-center active:opacity-80 disabled:opacity-60"
+              style={{ backgroundColor: '#1E40AF' }}
+            >
+              {activeMutation.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white font-bold text-base">{nextLabel}</Text>
+              )}
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
-
-      {/* Fixed bottom button */}
-      <View className="absolute bottom-0 left-0 right-0 px-5 pb-10 pt-3 bg-surface border-t border-surface-container">
-        <Pressable
-          onPress={handleNext}
-          disabled={activeMutation.isPending}
-          className="h-14 rounded-2xl items-center justify-center active:opacity-80 disabled:opacity-60"
-          style={{ backgroundColor: '#1E40AF' }}
-        >
-          {activeMutation.isPending ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text className="text-white font-bold text-base">{nextLabel}</Text>
-          )}
-        </Pressable>
-      </View>
 
       {/* Modals */}
       <StaffPickerModal

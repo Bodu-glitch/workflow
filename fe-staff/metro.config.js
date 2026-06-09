@@ -17,6 +17,10 @@ config.server = {
   },
 };
 
+// Fix socket.io-client ESM resolution on Metro — force CJS via main field
+config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
+config.resolver.unstable_enablePackageExports = false;
+
 module.exports = withNativewind(config, {
   // inline variables break PlatformColor in CSS variables
   inlineVariables: false,

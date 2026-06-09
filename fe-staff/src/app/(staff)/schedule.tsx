@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, TextInput } from '@/tw';
 import { scheduleApi } from '@/lib/api/schedule';
+import { useAuth } from '@/context/auth';
+import { useSocketContext } from '@/context/socket';
 import type { MyShiftAssignment, LeaveRequest, LeaveType } from '@/types/api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -64,10 +66,20 @@ function shiftIcon(startTime: string) {
 
 // ─── My Schedule Tab ─────────────────────────────────────────────────────────
 function MyScheduleTab() {
+  const qc = useQueryClient();
+  const socket = useSocketContext();
+
   const [anchor, setAnchor] = useState(new Date());
   const weekDates = useMemo(() => getWeekDates(anchor), [anchor]);
   const fromISO = toISO(weekDates[0]);
   const toISO2 = toISO(weekDates[6]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => { qc.invalidateQueries({ queryKey: ['my-assignments'] }); };
+    socket.on('schedule:updated', handler);
+    return () => { socket.off('schedule:updated', handler); };
+  }, [socket, qc]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-assignments', fromISO, toISO2],
@@ -204,6 +216,14 @@ function MyScheduleTab() {
 // ─── Leave Requests Tab ───────────────────────────────────────────────────────
 function LeaveRequestsTab() {
   const qc = useQueryClient();
+  const socket = useSocketContext();
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => { qc.invalidateQueries({ queryKey: ['my-leave-requests'] }); };
+    socket.on('schedule:updated', handler);
+    return () => { socket.off('schedule:updated', handler); };
+  }, [socket, qc]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-leave-requests'],

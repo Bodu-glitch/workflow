@@ -1,23 +1,32 @@
-import { IsString, IsEnum, IsNumber, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
+import { IsString, IsEnum, IsNumber, IsOptional, IsBoolean, IsInt, IsDateString, MinLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateVoucherDto {
   @IsString()
   code: string;
 
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  name?: string;
+
   @IsEnum(['percent', 'fixed'])
   type: 'percent' | 'fixed';
 
   @IsNumber()
+  @Type(() => Number)
   @Min(0)
   value: number;
 
   @IsOptional()
   @IsNumber()
+  @Type(() => Number)
   @Min(0)
   max_discount?: number;
 
   @IsOptional()
   @IsNumber()
+  @Type(() => Number)
   @Min(0)
   min_order_value?: number;
 
@@ -27,6 +36,7 @@ export class CreateVoucherDto {
 
   @IsOptional()
   @IsInt()
+  @Type(() => Number)
   @Min(1)
   usage_limit?: number;
 

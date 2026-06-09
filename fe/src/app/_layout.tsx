@@ -9,6 +9,7 @@ import { useColorScheme } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider } from '@/context/auth';
 import { useAuth } from '@/context/auth';
+import { SocketProvider } from '@/context/socket';
 import { ToastProvider } from '@/context/toast';
 
 const queryClient = new QueryClient({
@@ -67,13 +68,15 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TenantCacheManager />
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <ToastProvider>
-            <AnimatedSplashOverlay />
-            <RootStack />
-          </ToastProvider>
-        </ThemeProvider>
+        <SocketProvider>
+          <TenantCacheManager />
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <ToastProvider>
+              <AnimatedSplashOverlay />
+              <RootStack />
+            </ToastProvider>
+          </ThemeProvider>
+        </SocketProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

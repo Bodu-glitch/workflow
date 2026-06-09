@@ -5,11 +5,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { useAuth } from '@/context/auth';
 import { supabase } from '@/lib/supabase';
+import { useSocketContext } from '@/context/socket';
+import { supportApi } from '@/lib/api/support';
+import { markChatAsRead } from '@/components/ChatBell';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ChatMessage {
   id: string;
@@ -17,6 +22,9 @@ interface ChatMessage {
   full_name: string;
   content: string;
   created_at: string;
+  type: 'text' | 'task_card';
+  task_id?: string | null;
+  ticket_id?: string | null;
 }
 
 function getInitials(name: string) {
@@ -50,16 +58,215 @@ function transformRow(row: any): ChatMessage {
     content: row.content,
     created_at: row.created_at,
     full_name: row.users?.full_name ?? 'Unknown',
+    type: row.type ?? 'text',
+    task_id: row.task_id ?? null,
+    ticket_id: row.ticket_id ?? null,
   };
 }
 
+function TaskCard({ msg, role }: { msg: ChatMessage; role: string | null }) {
+  const [showReply, setShowReply] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [taskDetails, setTaskDetails] = useState<{ title?: string; service_type?: string; location_name?: string; deadline?: string } | null>(null);
+  const canReply = role === 'business_owner' || role === 'operator';
+
+  useEffect(() => {
+    if (!msg.task_id) return;
+    supabase
+      .from('tasks')
+      .select('title, service_type, location_name, deadline')
+      .eq('id', msg.task_id)
+      .single()
+      .then(({ data }) => { if (data) setTaskDetails(data); });
+  }, [msg.task_id]);
+
+  const handleReply = async () => {
+    if (!replyText.trim() || !msg.ticket_id) return;
+    setSending(true);
+    try {
+      await supportApi.reply(msg.ticket_id, replyText.trim());
+      setReplyText('');
+      setShowReply(false);
+    } catch (e) {
+      console.error('[TaskCard] reply error:', e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => {
+          if (msg.task_id) {
+            const role2 = role;
+            if (role2 === 'business_owner') router.push(`/(bo)/tasks/${msg.task_id}` as any);
+            else if (role2 === 'operator') router.push(`/(ot)/tasks/${msg.task_id}` as any);
+          }
+        }}
+        style={{
+          backgroundColor: '#EFF6FF',
+          borderRadius: 14,
+          borderLeftWidth: 4,
+          borderLeftColor: '#1E40AF',
+          padding: 12,
+          maxWidth: 280,
+          shadowColor: '#000',
+          shadowOpacity: 0.06,
+          shadowRadius: 4,
+          elevation: 2,
+        }}
+        className="active:opacity-70"
+      >
+        <Text style={{ fontSize: 10, fontWeight: '700', color: '#1E40AF', letterSpacing: 0.5, marginBottom: 4 }}>
+          🆘 YÊU CẦU HỖ TRỢ
+        </Text>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: '#0d1c2e', marginBottom: 6 }} numberOfLines={2}>
+          {taskDetails?.title ?? msg.content}
+        </Text>
+        {taskDetails?.service_type && (
+          <Text style={{ fontSize: 12, color: '#374151', marginBottom: 3 }} numberOfLines={1}>
+            🔧 {taskDetails.service_type}
+          </Text>
+        )}
+        {taskDetails?.location_name && (
+          <Text style={{ fontSize: 12, color: '#374151', marginBottom: 3 }} numberOfLines={1}>
+            📍 {taskDetails.location_name}
+          </Text>
+        )}
+        {taskDetails?.deadline && (
+          <Text style={{ fontSize: 12, color: '#dc2626', marginBottom: 6, fontWeight: '600' }} numberOfLines={1}>
+            ⏰ {new Date(taskDetails.deadline).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        )}
+        {msg.content && (
+          <View style={{ borderTopWidth: 1, borderTopColor: '#bfdbfe', marginTop: 6, paddingTop: 6, marginBottom: 4 }}>
+            <Text style={{ fontSize: 13, color: '#1e3a5f', lineHeight: 18 }}>{msg.content}</Text>
+          </View>
+        )}
+        <Text style={{ fontSize: 11, color: '#64748b', marginBottom: canReply ? 8 : 0 }}>
+          Nhấn để xem nhiệm vụ →
+        </Text>
+        {canReply && (
+          <Pressable
+            onPress={() => setShowReply(true)}
+            style={{ backgroundColor: '#1E40AF', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, alignSelf: 'flex-start' }}
+            className="active:opacity-70"
+          >
+            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>↩ Trả lời</Text>
+          </Pressable>
+        )}
+      </Pressable>
+
+      {/* Reply modal */}
+      <Modal visible={showReply} transparent animationType="fade" onRequestClose={() => setShowReply(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#0d1c2e', marginBottom: 4 }}>Trả lời yêu cầu hỗ trợ</Text>
+            <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }} numberOfLines={1}>{msg.content}</Text>
+            <RNTextInput
+              value={replyText}
+              onChangeText={setReplyText}
+              placeholder="Nhập nội dung trả lời..."
+              placeholderTextColor="#94a3b8"
+              multiline
+              autoFocus
+              style={{ backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#0d1c2e', minHeight: 80, marginBottom: 12, textAlignVertical: 'top' }}
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable onPress={() => { setShowReply(false); setReplyText(''); }} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#f1f5f9', alignItems: 'center' }}>
+                <Text style={{ color: '#64748b', fontWeight: '600' }}>Huỷ</Text>
+              </Pressable>
+              <Pressable onPress={handleReply} disabled={!replyText.trim() || sending} style={{ flex: 2, paddingVertical: 12, borderRadius: 12, backgroundColor: replyText.trim() ? '#1E40AF' : '#e2e8f0', alignItems: 'center' }}>
+                {sending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: replyText.trim() ? '#fff' : '#94a3b8', fontWeight: '700' }}>Gửi phản hồi</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function ReplyBubble({ msg, isOwn, isRequest }: { msg: ChatMessage; isOwn: boolean; isRequest: boolean }) {
+  const [taskTitle, setTaskTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!msg.ticket_id) return;
+    supabase
+      .from('support_tickets')
+      .select('tasks(title)')
+      .eq('id', msg.ticket_id)
+      .single()
+      .then(({ data }) => {
+        if (data) setTaskTitle((data as any).tasks?.title ?? null);
+      });
+  }, [msg.ticket_id]);
+
+  const quoteColor = isOwn ? 'rgba(255,255,255,0.15)' : '#EFF6FF';
+  const quoteBorderColor = isOwn ? 'rgba(255,255,255,0.5)' : '#1E40AF';
+  const labelColor = isOwn ? 'rgba(255,255,255,0.7)' : '#1E40AF';
+  const titleColor = isOwn ? 'rgba(255,255,255,0.85)' : '#374151';
+
+  return (
+    <View
+      style={{
+        backgroundColor: isOwn ? '#1E40AF' : '#fff',
+        borderRadius: 18,
+        borderBottomRightRadius: isOwn ? 4 : 18,
+        borderBottomLeftRadius: isOwn ? 18 : 4,
+        overflow: 'hidden',
+        elevation: 2,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      }}
+    >
+      {/* Quote block */}
+      <View
+        style={{
+          borderLeftWidth: 3,
+          borderLeftColor: quoteBorderColor,
+          backgroundColor: quoteColor,
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          margin: 8,
+          marginBottom: 4,
+          borderRadius: 6,
+        }}
+      >
+        <Text style={{ fontSize: 10, fontWeight: '700', color: labelColor, marginBottom: 2, letterSpacing: 0.3 }}>
+          {isRequest ? '🆘 Yêu cầu hỗ trợ' : '↩ Phản hồi yêu cầu hỗ trợ'}
+        </Text>
+        {taskTitle && (
+          <Text style={{ fontSize: 12, color: titleColor, fontWeight: '500' }} numberOfLines={1}>
+            {taskTitle}
+          </Text>
+        )}
+      </View>
+
+      {/* Reply content */}
+      <View style={{ paddingHorizontal: 14, paddingBottom: 10, paddingTop: 2 }}>
+        <Text style={{ color: isOwn ? '#fff' : '#0d1c2e', fontSize: 14, lineHeight: 20 }}>
+          {msg.content}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function ChatScreen() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const socket = useSocketContext();
   const tenantId = user?.tenant_id;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const isAtBottom = useRef(true);
+  const hasLoaded = useRef(false);
+  const firstUnreadIndex = useRef<number | null>(null);
+  const isScrollingToBottom = useRef(false);
   const flatListRef = useRef<FlatList>(null);
 
   const currentTenant = user?.tenants?.find((t) => t.id === tenantId) ?? user?.tenants?.[0];
@@ -67,60 +274,49 @@ export default function ChatScreen() {
 
   const loadMessages = useCallback(async () => {
     if (!tenantId) return;
+    const lastRead = await AsyncStorage.getItem('chat_last_read_at');
     const { data } = await supabase
       .from('chat_messages')
-      .select('id, user_id, content, created_at, users!chat_messages_user_id_fkey(full_name)')
+      .select('id, user_id, content, type, task_id, ticket_id, created_at, users!chat_messages_user_id_fkey(full_name)')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true })
       .limit(50);
-    if (data) setMessages(data.map(transformRow));
+    if (data) {
+      const rows = data.map(transformRow);
+      setMessages(rows);
+      if (lastRead) {
+        const idx = rows.findIndex(m => m.created_at > lastRead && m.user_id !== user?.id);
+        firstUnreadIndex.current = idx >= 0 ? idx : null;
+      }
+    }
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, user?.id]);
 
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
 
   useEffect(() => {
-    if (!tenantId) return;
-    const channel = supabase
-      .channel(`chat:${tenantId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `tenant_id=eq.${tenantId}` },
-        async (payload) => {
-          const { data } = await supabase
-            .from('chat_messages')
-            .select('id, user_id, content, created_at, users!chat_messages_user_id_fkey(full_name)')
-            .eq('id', payload.new.id)
-            .single();
-          if (data) {
-            setMessages((prev) => {
-              // Deduplicate: skip if already present (optimistic insert)
-              if (prev.some((m) => m.id === (data as any).id)) return prev;
-              return [...prev, transformRow(data)];
-            });
-          }
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [tenantId]);
+    if (!socket || !tenantId) return;
+
+    const handler = (msg: any) => {
+      if (msg?.tenant_id !== tenantId) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, transformRow(msg)];
+      });
+    };
+
+    socket.on('staff_chat:message', handler);
+    return () => { socket.off('staff_chat:message', handler); };
+  }, [socket, tenantId]);
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || !tenantId || sending) return;
+    if (!text || !tenantId || sending || !socket) return;
     setInput('');
     setSending(true);
-    const { error } = await supabase.from('chat_messages').insert({
-      tenant_id: tenantId,
-      user_id: user!.id,
-      content: text,
-    });
-    if (error) {
-      setInput(text);
-      console.error('[Chat] insert error:', error.message, error.code);
-    }
+    socket.emit('staff_chat:send', { content: text, type: 'text' });
     setSending(false);
   };
 
@@ -165,7 +361,36 @@ export default function ChatScreen() {
           data={messages}
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ padding: 16, paddingBottom: 8, gap: 4 }}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() => {
+            if (!hasLoaded.current) {
+              hasLoaded.current = true;
+              const idx = firstUnreadIndex.current;
+              if (idx !== null && idx > 0) {
+                flatListRef.current?.scrollToIndex({ index: Math.max(0, idx - 1), animated: false, viewPosition: 0 });
+              } else {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+              markChatAsRead();
+            } else if (isAtBottom.current) {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
+          onScrollToIndexFailed={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onScroll={(e) => {
+            if (isScrollingToBottom.current) return;
+            const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+            const dist = contentSize.height - layoutMeasurement.height - contentOffset.y;
+            isAtBottom.current = dist <= 120;
+            if (hasLoaded.current) setShowScrollBtn(dist > 120);
+          }}
+          onMomentumScrollEnd={(e) => {
+            isScrollingToBottom.current = false;
+            const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+            const dist = contentSize.height - layoutMeasurement.height - contentOffset.y;
+            isAtBottom.current = dist <= 120;
+            setShowScrollBtn(dist > 120);
+          }}
+          scrollEventThrottle={100}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', marginTop: 48 }}>
               <Text style={{ fontSize: 32, marginBottom: 8 }}>💬</Text>
@@ -220,6 +445,11 @@ export default function ChatScreen() {
                         {item.full_name}
                       </Text>
                     )}
+                    {item.type === 'task_card' ? (
+                      <TaskCard msg={item} role={role} />
+                    ) : item.ticket_id ? (
+                      <ReplyBubble msg={item} isOwn={isOwn} isRequest={!isOwn} />
+                    ) : (
                     <View
                       style={{
                         backgroundColor: isOwn ? '#1E40AF' : '#fff',
@@ -236,6 +466,7 @@ export default function ChatScreen() {
                         {item.content}
                       </Text>
                     </View>
+                    )}
                     <Text
                       style={{
                         fontSize: 10,
@@ -253,6 +484,36 @@ export default function ChatScreen() {
             );
           }}
         />
+      )}
+
+      {/* Scroll to bottom button */}
+      {showScrollBtn && (
+        <Pressable
+          onPress={() => {
+            isScrollingToBottom.current = true;
+            setShowScrollBtn(false);
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }}
+          style={{
+            position: 'absolute',
+            bottom: 80,
+            alignSelf: 'center',
+            backgroundColor: '#1E40AF',
+            borderRadius: 20,
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            shadowColor: '#000',
+            shadowOpacity: 0.2,
+            shadowRadius: 6,
+            elevation: 4,
+          }}
+          className="active:opacity-70"
+        >
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Tin mới nhất ↓</Text>
+        </Pressable>
       )}
 
       {/* Input bar */}

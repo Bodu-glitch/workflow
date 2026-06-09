@@ -11,6 +11,7 @@ interface NotificationPayload {
   title: string;
   body: string;
   task_id?: string;
+  request_id?: string;
   tenant_id: string;
 }
 
@@ -29,7 +30,7 @@ Deno.serve(async (req: Request) => {
     });
 
     const payload: NotificationPayload = await req.json();
-    const { user_ids, type, title, body, task_id, tenant_id } = payload;
+    const { user_ids, type, title, body, task_id, request_id, tenant_id } = payload;
 
     if (!user_ids || user_ids.length === 0) {
       return new Response(JSON.stringify({ error: 'No user_ids provided' }), {
@@ -52,6 +53,7 @@ Deno.serve(async (req: Request) => {
       tenant_id,
       user_id: uid,
       task_id: task_id ?? null,
+      request_id: request_id ?? null,
       type,
       title,
       body,
@@ -78,7 +80,7 @@ Deno.serve(async (req: Request) => {
             sound: 'default',
             title,
             body,
-            data: { type, task_id: task_id ?? '', tenant_id },
+            data: { type, task_id: task_id ?? '', request_id: request_id ?? '', tenant_id },
           }))
         ),
       });

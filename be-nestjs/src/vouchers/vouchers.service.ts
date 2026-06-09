@@ -20,7 +20,6 @@ interface CurrentUser {
 export class VouchersService {
   constructor(private supabase: SupabaseService) {}
 
-  /** BO/OT: danh sách vouchers của tenant */
   async listVouchers(tenantId: string, pagination: PaginationDto) {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
@@ -36,9 +35,7 @@ export class VouchersService {
     return { data: data ?? [], meta: { total: count, page, limit } };
   }
 
-  /** BO/OT: tạo voucher mới */
   async createVoucher(tenantId: string, dto: CreateVoucherDto, userId: string) {
-    // Validate: percent type: value 1-100
     if (dto.type === 'percent' && (dto.value <= 0 || dto.value > 100)) {
       throw new BadRequestException({ code: 'INVALID_VOUCHER_VALUE', message: 'Giá trị phần trăm phải từ 1-100' });
     }
@@ -48,6 +45,7 @@ export class VouchersService {
       .insert({
         tenant_id: tenantId,
         code: dto.code.toUpperCase().trim(),
+        name: dto.name ?? null,
         type: dto.type,
         value: dto.value,
         max_discount: dto.max_discount,
@@ -71,7 +69,6 @@ export class VouchersService {
     return data;
   }
 
-  /** BO/OT: cập nhật voucher */
   async updateVoucher(id: string, dto: UpdateVoucherDto, tenantId: string) {
     const { data: existing } = await this.supabase.db
       .from('vouchers')
@@ -93,7 +90,6 @@ export class VouchersService {
     return data;
   }
 
-  /** BO/OT: xóa voucher (soft delete) */
   async deleteVoucher(id: string, tenantId: string) {
     const { data: existing } = await this.supabase.db
       .from('vouchers')
@@ -108,7 +104,6 @@ export class VouchersService {
     return { message: 'Voucher đã bị vô hiệu hóa' };
   }
 
-  /** Customer: validate mã voucher trước khi áp dụng */
   async validateVoucher(dto: ValidateVoucherDto) {
     const now = new Date().toISOString();
 
@@ -124,20 +119,16 @@ export class VouchersService {
       throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Mã voucher không hợp lệ hoặc không tồn tại' });
     }
 
-    // Kiểm tra thời hạn
     if (voucher.starts_at && voucher.starts_at > now) {
       throw new BadRequestException({ code: 'VOUCHER_NOT_STARTED', message: 'Voucher chưa đến thời gian sử dụng' });
     }
     if (voucher.ends_at && voucher.ends_at < now) {
       throw new BadRequestException({ code: 'VOUCHER_EXPIRED', message: 'Voucher đã hết hạn' });
     }
-
-    // Kiểm tra số lượng
     if (voucher.usage_limit !== null && voucher.usage_count >= voucher.usage_limit) {
       throw new BadRequestException({ code: 'VOUCHER_EXHAUSTED', message: 'Voucher đã hết lượt sử dụng' });
     }
 
-    // Kiểm tra giá trị đơn hàng tối thiểu
     const orderAmount = dto.order_amount ?? 0;
     if (voucher.min_order_value && orderAmount < voucher.min_order_value) {
       throw new BadRequestException({
@@ -146,7 +137,6 @@ export class VouchersService {
       });
     }
 
-    // Kiểm tra category nếu có điều kiện
     if (voucher.service_category_id && dto.category_id && voucher.service_category_id !== dto.category_id) {
       throw new BadRequestException({
         code: 'VOUCHER_CATEGORY_MISMATCH',
@@ -154,7 +144,6 @@ export class VouchersService {
       });
     }
 
-    // Tính toán giảm giá
     let discount = 0;
     if (voucher.type === 'percent') {
       discount = (orderAmount * voucher.value) / 100;
@@ -162,7 +151,7 @@ export class VouchersService {
     } else {
       discount = voucher.value;
     }
-    discount = Math.min(discount, orderAmount); // không giảm quá giá trị đơn hàng
+    discount = Math.min(discount, orderAmount);
 
     return {
       voucher_id: voucher.id,
@@ -174,9 +163,12 @@ export class VouchersService {
     };
   }
 
-  /** Customer: áp dụng voucher vào request (gọi sau khi xác nhận) */
+  /** Alias for public controller compatibility */
+  async validate(code: string, tenantId: string, orderAmount: number) {
+    return this.validateVoucher({ code, tenant_id: tenantId, order_amount: orderAmount });
+  }
+
   async applyVoucher(requestId: string, code: string, tenantId: string, customerId: string) {
-    // Lấy request để biết agreed_price và category
     const { data: request } = await this.supabase.db
       .from('service_requests')
       .select('id, agreed_price, category_id, customer_id, applied_voucher_id, status')
@@ -199,7 +191,6 @@ export class VouchersService {
     const finalAmount = validResult.final_amount;
     const discountAmount = validResult.discount_amount;
 
-    // Cập nhật request
     await this.supabase.db
       .from('service_requests')
       .update({
@@ -209,7 +200,6 @@ export class VouchersService {
       })
       .eq('id', requestId);
 
-    // Ghi lại usage
     await this.supabase.db.from('voucher_usages').insert({
       voucher_id: validResult.voucher_id,
       request_id: requestId,
@@ -217,13 +207,11 @@ export class VouchersService {
       discount_amount: discountAmount,
     });
 
-    // Tăng usage_count
     await this.supabase.db.rpc('increment_voucher_usage', { voucher_id: validResult.voucher_id });
 
     return { discount_amount: discountAmount, final_amount: finalAmount };
   }
 
-  /** BO: thống kê voucher */
   async getVoucherStats(id: string, tenantId: string) {
     const { data: voucher } = await this.supabase.db
       .from('vouchers')

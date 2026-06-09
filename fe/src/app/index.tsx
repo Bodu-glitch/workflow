@@ -38,7 +38,8 @@ export default function Index() {
 
   if (user.role === 'business_owner') return <Redirect href="/(bo)" />;
   if (user.role === 'operator') return <Redirect href="/(ot)" />;
-  if (user.role === 'staff') return <Redirect href="/(staff)" />;
+  // staff role has no screens in this app — go back to tenant selection
+  if (user.role === 'staff') return <Redirect href="/(auth)/select-tenant" />;
   // role is null — tenant context missing, go to select-tenant
   if ((user as any).tenants?.length > 0) return <Redirect href="/(auth)/select-tenant" />;
   return <Redirect href="/(auth)/login" />;

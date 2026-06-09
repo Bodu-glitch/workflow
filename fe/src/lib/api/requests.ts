@@ -81,6 +81,11 @@ export const requestsApi = {
       method: 'POST',
       body: JSON.stringify({ content }),
     }),
+
+  createTask: (id: string) =>
+    apiFetch<{ task_id: string; message: string }>(`/requests/${id}/create-task`, {
+      method: 'POST',
+    }),
 };
 
 export interface ChatMessage {

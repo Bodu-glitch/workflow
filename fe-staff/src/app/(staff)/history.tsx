@@ -73,7 +73,15 @@ export default function WorkHistoryScreen() {
   return (
     <View className="flex-1 bg-surface-container-low">
       <View className="glass-effect px-5 pt-14 pb-4">
-        <Text className="text-xl font-extrabold text-on-surface tracking-tight">Lịch sử công việc</Text>
+        <View className="flex-row items-center justify-between">
+          <Text className="text-xl font-extrabold text-on-surface tracking-tight">Lịch sử công việc</Text>
+          <Pressable
+            onPress={() => router.push('/(staff)/support-tickets' as any)}
+            className="flex-row items-center gap-1.5 px-3 py-2 rounded-xl bg-secondary-container active:opacity-70"
+          >
+            <Text className="text-xs font-bold text-on-secondary-container">🆘 Ticket hỗ trợ</Text>
+          </Pressable>
+        </View>
       </View>
 
       <FlatList

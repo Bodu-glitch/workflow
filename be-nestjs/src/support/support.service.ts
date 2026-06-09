@@ -1,183 +1,169 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
-import { EventsGateway } from '../gateway/events.gateway.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
-import { SendSupportMessageDto } from './dto/send-message.dto.js';
-import { PaginationDto } from '../common/dto/pagination.dto.js';
+import { ReplyTicketDto } from './dto/reply-ticket.dto.js';
 
-interface CurrentUser {
-  id: string;
-  role: string;
-  tenant_id: string | null;
-}
+type CurrentUser = { id: string; tenant_id: string; role: string };
 
 @Injectable()
 export class SupportService {
   constructor(
     private supabase: SupabaseService,
-    private gateway: EventsGateway,
     private notifications: NotificationsService,
+    private gateway: EventsGateway,
   ) {}
 
-  /** Staff: danh sách tickets của mình */
-  async listMyTickets(user: CurrentUser, pagination: PaginationDto) {
-    const { page = 1, limit = 20 } = pagination;
-    const offset = (page - 1) * limit;
+  async createTicket(dto: CreateTicketDto, user: CurrentUser) {
+    const { data: task } = await this.supabase.db
+      .from('tasks')
+      .select('id, title, status, location_name')
+      .eq('id', dto.task_id)
+      .eq('tenant_id', user.tenant_id)
+      .single();
 
-    const { data, count, error } = await this.supabase.db
-      .from('support_tickets')
-      .select('*, request:request_id(id, description, status)', { count: 'exact' })
-      .eq('staff_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    if (!task) throw new NotFoundException({ code: 'TASK_NOT_FOUND', message: 'Task not found' });
 
-    if (error) throw new BadRequestException(error.message);
-    return { data: data ?? [], meta: { total: count, page, limit } };
-  }
+    const { data: assignment } = await this.supabase.db
+      .from('task_assignments')
+      .select('id')
+      .eq('task_id', dto.task_id)
+      .eq('user_id', user.id)
+      .single();
 
-  /** Staff: tạo ticket */
-  async createTicket(user: CurrentUser, dto: CreateTicketDto) {
-    const { data, error } = await this.supabase.db
+    if (!assignment) throw new ForbiddenException({ code: 'NOT_ASSIGNEE', message: 'You are not assigned to this task' });
+
+    const { data: ticket, error: ticketError } = await this.supabase.db
       .from('support_tickets')
       .insert({
-        staff_id: user.id,
         tenant_id: user.tenant_id,
-        request_id: dto.request_id ?? null,
-        subject: dto.subject,
+        task_id: dto.task_id,
+        created_by: user.id,
+        status: 'open',
       })
       .select()
       .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (ticketError) throw new BadRequestException(ticketError.message);
 
-    // Notify BO/OT managers of the tenant
-    if (user.tenant_id) {
-      const { data: managers } = await this.supabase.db
-        .from('user_tenants')
-        .select('user_id')
-        .eq('tenant_id', user.tenant_id)
-        .in('role', ['business_owner', 'operator'])
-        .eq('is_active', true);
-
-      if (managers && managers.length > 0) {
-        void this.notifications.sendPushNotification({
-          user_ids: managers.map((m: any) => m.user_id),
-          type: 'support_ticket_created',
-          title: '🎫 Yêu cầu hỗ trợ mới',
-          body: dto.subject,
-          tenant_id: user.tenant_id,
-        });
-      }
-    }
-
-    return data;
-  }
-
-  /** Lấy messages của ticket */
-  async getMessages(ticketId: string, user: CurrentUser, pagination: PaginationDto) {
-    // Check access: staff_id = user hoặc BO/OT cùng tenant
-    const { data: ticket } = await this.supabase.db
-      .from('support_tickets')
-      .select('staff_id, tenant_id')
-      .eq('id', ticketId)
+    const { data: chatMsg, error: msgError } = await this.supabase.db
+      .from('chat_messages')
+      .insert({
+        tenant_id: user.tenant_id,
+        user_id: user.id,
+        type: 'task_card',
+        task_id: dto.task_id,
+        ticket_id: ticket.id,
+        content: dto.description,
+      })
+      .select('id, user_id, content, type, task_id, ticket_id, created_at, tenant_id, users!chat_messages_user_id_fkey(full_name)')
       .single();
 
-    if (!ticket) throw new NotFoundException('Ticket không tồn tại');
-    if (ticket.staff_id !== user.id && ticket.tenant_id !== user.tenant_id) {
-      throw new ForbiddenException();
-    }
+    if (msgError) throw new BadRequestException(msgError.message);
+    if (chatMsg) this.gateway.emitStaffChatMessage(user.tenant_id, chatMsg);
 
-    const { page = 1, limit = 50 } = pagination;
-    const offset = (page - 1) * limit;
+    return { ticket, task };
+  }
 
+  async getMyTickets(user: CurrentUser) {
     const { data, error } = await this.supabase.db
-      .from('support_messages')
-      .select('*, sender:sender_id(id, full_name, avatar_url, role)')
-      .eq('ticket_id', ticketId)
-      .order('created_at', { ascending: true })
-      .range(offset, offset + limit - 1);
+      .from('support_tickets')
+      .select(`
+        id, status, created_at, updated_at,
+        tasks(id, title, status, location_name)
+      `)
+      .eq('tenant_id', user.tenant_id)
+      .eq('created_by', user.id)
+      .order('created_at', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
     return data ?? [];
   }
 
-  /** Gửi message */
-  async sendMessage(ticketId: string, user: CurrentUser, dto: SendSupportMessageDto) {
+  async getTicketReplies(ticketId: string, user: CurrentUser) {
     const { data: ticket } = await this.supabase.db
       .from('support_tickets')
-      .select('staff_id, tenant_id, status')
+      .select('id, created_by')
       .eq('id', ticketId)
+      .eq('tenant_id', user.tenant_id)
       .single();
 
-    if (!ticket) throw new NotFoundException('Ticket không tồn tại');
-    if (ticket.status === 'closed') {
-      throw new BadRequestException({ code: 'TICKET_CLOSED', message: 'Ticket đã đóng' });
-    }
-    if (ticket.staff_id !== user.id && ticket.tenant_id !== user.tenant_id) {
-      throw new ForbiddenException();
-    }
+    if (!ticket) throw new NotFoundException({ code: 'TICKET_NOT_FOUND', message: 'Ticket not found' });
 
-    const isOperator = ['business_owner', 'operator'].includes(user.role);
+    if (user.role === 'staff' && ticket.created_by !== user.id) {
+      throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Access denied' });
+    }
 
     const { data, error } = await this.supabase.db
-      .from('support_messages')
-      .insert({
-        ticket_id: ticketId,
-        sender_id: user.id,
-        content: dto.content,
-        is_operator: isOperator,
-      })
-      .select('*, sender:sender_id(id, full_name, avatar_url)')
-      .single();
+      .from('chat_messages')
+      .select('id, content, type, created_at, users!chat_messages_user_id_fkey(id, full_name, avatar_url)')
+      .eq('ticket_id', ticketId)
+      .eq('type', 'text')
+      .order('created_at', { ascending: true });
 
     if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
 
-    // Update ticket status nếu operator reply
-    if (isOperator && ticket.status === 'open') {
+  async replyTicket(ticketId: string, dto: ReplyTicketDto, user: CurrentUser) {
+    const { data: ticket } = await this.supabase.db
+      .from('support_tickets')
+      .select('id, created_by, tenant_id, status, tasks(title)')
+      .eq('id', ticketId)
+      .eq('tenant_id', user.tenant_id)
+      .single();
+
+    if (!ticket) throw new NotFoundException({ code: 'TICKET_NOT_FOUND', message: 'Ticket not found' });
+
+    const { data: message, error: msgError } = await this.supabase.db
+      .from('chat_messages')
+      .insert({
+        tenant_id: user.tenant_id,
+        user_id: user.id,
+        type: 'text',
+        ticket_id: ticketId,
+        content: dto.content,
+      })
+      .select('id, user_id, content, type, task_id, ticket_id, created_at, tenant_id, users!chat_messages_user_id_fkey(full_name)')
+      .single();
+
+    if (msgError) throw new BadRequestException(msgError.message);
+    if (message) this.gateway.emitStaffChatMessage(user.tenant_id, message);
+
+    if (ticket.status === 'open') {
       await this.supabase.db
         .from('support_tickets')
         .update({ status: 'in_progress', updated_at: new Date().toISOString() })
         .eq('id', ticketId);
     }
 
-    // Emit socket event to ticket room
-    this.gateway.emitSupportMessage(ticketId, data);
+    const taskTitle = (ticket.tasks as any)?.title ?? 'task';
+    void this.notifications.sendPushNotification({
+      user_ids: [ticket.created_by],
+      type: 'support_reply',
+      title: 'Hỗ trợ của bạn đã được phản hồi',
+      body: `Ticket cho "${taskTitle}" vừa được trả lời.`,
+      tenant_id: user.tenant_id,
+    });
 
-    return data;
+    return message;
   }
 
-  /** BO/OT: danh sách tickets pending của tenant */
-  async listPendingTickets(user: CurrentUser, pagination: PaginationDto) {
-    const { page = 1, limit = 20 } = pagination;
-    const offset = (page - 1) * limit;
-
-    const { data, count, error } = await this.supabase.db
-      .from('support_tickets')
-      .select(`
-        *,
-        staff:staff_id(id, full_name, avatar_url, phone),
-        request:request_id(id, description, status)
-      `, { count: 'exact' })
-      .eq('tenant_id', user.tenant_id)
-      .in('status', ['open', 'in_progress'])
-      .order('created_at', { ascending: true })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw new BadRequestException(error.message);
-    return { data: data ?? [], meta: { total: count, page, limit } };
-  }
-
-  /** BO/OT: cập nhật trạng thái ticket */
-  async updateTicketStatus(ticketId: string, tenantId: string, status: string) {
+  async updateTicketStatus(ticketId: string, status: string, user: CurrentUser) {
     const { data: ticket } = await this.supabase.db
       .from('support_tickets')
-      .select('tenant_id')
+      .select('id')
       .eq('id', ticketId)
+      .eq('tenant_id', user.tenant_id)
       .single();
 
-    if (!ticket) throw new NotFoundException('Ticket không tồn tại');
-    if (ticket.tenant_id !== tenantId) throw new ForbiddenException();
+    if (!ticket) throw new NotFoundException({ code: 'TICKET_NOT_FOUND', message: 'Ticket not found' });
 
     const { data, error } = await this.supabase.db
       .from('support_tickets')
@@ -188,5 +174,20 @@ export class SupportService {
 
     if (error) throw new BadRequestException(error.message);
     return data;
+  }
+
+  async listAllTickets(user: CurrentUser) {
+    const { data, error } = await this.supabase.db
+      .from('support_tickets')
+      .select(`
+        id, status, created_at, updated_at,
+        tasks(id, title, status, location_name),
+        users!support_tickets_created_by_fkey(id, full_name, avatar_url)
+      `)
+      .eq('tenant_id', user.tenant_id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
   }
 }

@@ -17,6 +17,11 @@ config.server = {
   },
 };
 
+// Prevent Metro from picking the ESM `module` field for socket.io-client / engine.io-client;
+// those packages ship ESM builds that Metro can't handle. Falling back to `main` (CJS) fixes it.
+config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
+config.resolver.unstable_enablePackageExports = false;
+
 module.exports = withNativewind(config, {
   // inline variables break PlatformColor in CSS variables
   inlineVariables: false,

@@ -16,6 +16,7 @@ import { SelectTenantDto } from './dto/select-tenant.dto.js';
 import { AssignRequestDto } from './dto/assign-request.dto.js';
 import { ConfirmPriceDto } from './dto/confirm-price.dto.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
+import { VouchersService } from '../vouchers/vouchers.service.js';
 
 interface CurrentUser {
   id: string;
@@ -34,6 +35,7 @@ export class RequestsService {
     private matching: MatchingService,
     private gateway: EventsGateway,
     private config: ConfigService,
+    private vouchers: VouchersService,
   ) {}
 
   async createRequest(
@@ -250,12 +252,27 @@ export class RequestsService {
     // Scheduled requests stay 'unavailable' until scheduled time; immediate requests go to 'pending_assignment'
     const newStatus = request.status === 'unavailable' ? 'unavailable' : 'pending_assignment';
 
+    let voucherId: string | null = null;
+    let discountAmount: number | null = null;
+    if (dto.voucher_code && dto.agreed_price != null) {
+      try {
+        const vr = await this.vouchers.validate(dto.voucher_code, dto.tenant_id, dto.agreed_price);
+        voucherId = vr.voucher_id;
+        discountAmount = vr.discount_amount;
+        // Increment used_count
+        await this.supabase.db.rpc('increment_voucher_used_count', { voucher_id: voucherId });
+      } catch {
+        // voucher invalid — proceed without discount
+      }
+    }
+
     const { data, error } = await this.supabase.db
       .from('service_requests')
       .update({
         tenant_id: dto.tenant_id,
         pricing_id: dto.pricing_id ?? match.pricing_id ?? null,
         status: newStatus,
+        ...(voucherId ? { voucher_id: voucherId, discount_amount: discountAmount } : {}),
       })
       .eq('id', id)
       .select()
@@ -570,6 +587,145 @@ export class RequestsService {
         });
       }
     }
+  }
+
+  // Customer: view bill + payment QR after task completion
+  async getBill(requestId: string, user: CurrentUser) {
+    const request = await this.getRequest(requestId, user);
+
+    const taskId = (request as any).task_id;
+    const taskStatus = (request as any).task?.status;
+    const isCompleted = taskStatus === 'done'
+      || ['completed', 'completed_late'].includes(request.status);
+
+    if (!isCompleted) {
+      throw new UnprocessableEntityException({
+        code: 'BILL_NOT_READY',
+        message: 'Hóa đơn sẽ có sau khi nhân viên hoàn thành công việc.',
+      });
+    }
+
+    // Service items from the linked task
+    let items: Array<{ label: string; unit_price: number }> = [];
+    if (taskId) {
+      const { data: serviceItems } = await this.supabase.db
+        .from('task_service_items')
+        .select('label, unit_price, checked')
+        .eq('task_id', taskId)
+        .eq('checked', true)
+        .order('created_at');
+      items = (serviceItems ?? []).map((i: any) => ({ label: i.label, unit_price: Number(i.unit_price) || 0 }));
+    }
+
+    const itemsTotal = items.reduce((s, i) => s + i.unit_price, 0);
+    // Prefer the actual collected/agreed amount if set, else the checklist total
+    const total = request.collected_amount ?? request.agreed_price ?? itemsTotal;
+
+    // Tenant bank payment info for VietQR
+    let payment: { bank_code: string; account_number: string; account_name: string } | null = null;
+    if (request.tenant_id) {
+      const { data: tenant } = await this.supabase.db
+        .from('tenants')
+        .select('settings')
+        .eq('id', request.tenant_id)
+        .single();
+      payment = (tenant?.settings as any)?.payment ?? null;
+    }
+
+    return {
+      request_id: requestId,
+      tenant: request.tenant,
+      items,
+      items_total: itemsTotal,
+      total,
+      collected_amount: request.collected_amount ?? null,
+      payment,
+      status: taskStatus ?? request.status,
+    };
+  }
+
+  // BO/OT: convert a customer service_request into a pool task
+  async createTaskFromRequest(requestId: string, user: CurrentUser) {
+    const { data: req, error: reqErr } = await this.supabase.db
+      .from('service_requests')
+      .select('*, customer:customer_id(id, full_name, phone, email)')
+      .eq('id', requestId)
+      .single();
+
+    if (reqErr || !req) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Request not found' });
+    if (req.tenant_id !== user.tenant_id) {
+      throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Request does not belong to your workspace' });
+    }
+    if (req.task_id) {
+      throw new UnprocessableEntityException({ code: 'TASK_ALREADY_CREATED', message: 'Task already created from this request' });
+    }
+
+    const title = (req.description ?? '').slice(0, 100) || 'Yêu cầu từ khách hàng';
+    const { data: task, error: taskErr } = await this.supabase.db
+      .from('tasks')
+      .insert({
+        title,
+        description: req.description,
+        tenant_id: req.tenant_id,
+        created_by: user.id,
+        status: 'todo',
+        priority: req.is_emergency ? 'urgent' : 'medium',
+        location_lat: req.location_lat,
+        location_lng: req.location_lng,
+        location_name: req.location_name ?? req.location_address,
+        location_radius_m: 100,
+        customer_name: (req.customer as any)?.full_name ?? null,
+        customer_phone: (req.customer as any)?.phone ?? null,
+        customer_email: (req.customer as any)?.email ?? null,
+        scheduled_at: req.scheduled_at,
+      })
+      .select()
+      .single();
+
+    if (taskErr || !task) throw new BadRequestException(taskErr?.message ?? 'Failed to create task');
+
+    // Link task back to service_request
+    await this.supabase.db
+      .from('service_requests')
+      .update({ task_id: task.id, status: 'pending_assignment' })
+      .eq('id', requestId);
+
+    // Notify nearby staff (F1) — fire-and-forget
+    if (task.location_lat && task.location_lng) {
+      const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: locs } = await this.supabase.db
+        .from('staff_locations')
+        .select('user_id, lat, lng')
+        .eq('tenant_id', user.tenant_id)
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false });
+
+      if (locs && locs.length > 0) {
+        const seen = new Set<string>();
+        const nearby: string[] = [];
+        for (const loc of locs) {
+          if (seen.has(loc.user_id)) continue;
+          seen.add(loc.user_id);
+          const dLat = (task.location_lat - loc.lat) * Math.PI / 180;
+          const dLng = (task.location_lng - loc.lng) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(task.location_lat * Math.PI / 180) * Math.cos(loc.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+          const dist = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          if (dist <= 10_000) nearby.push(loc.user_id);
+        }
+        if (nearby.length > 0) {
+          void this.notifications.sendPushNotification({
+            user_ids: nearby,
+            type: 'new_pool_task',
+            title: 'Nhiệm vụ mới gần bạn',
+            body: `${task.title} – Nhấn để nhận ngay!`,
+            task_id: task.id,
+            tenant_id: user.tenant_id,
+          });
+        }
+      }
+    }
+
+    return { task_id: task.id, message: 'Task created and added to pool' };
   }
 
   private enforceAccess(request: any, user: CurrentUser) {

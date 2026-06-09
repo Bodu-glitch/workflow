@@ -12,15 +12,24 @@ export interface SupportMessage {
 
 export interface SupportTicket {
   id: string;
-  staff_id: string;
-  tenant_id: string;
-  request_id: string | null;
-  subject: string;
+  staff_id?: string;
+  tenant_id?: string;
+  request_id?: string | null;
+  subject?: string;
   status: 'open' | 'in_progress' | 'resolved' | 'closed';
   created_at: string;
   updated_at: string;
   staff?: { id: string; full_name: string; avatar_url?: string | null; phone?: string | null } | null;
   request?: { id: string; description: string; status: string } | null;
+  tasks?: { id: string; title: string; status: string; location_name?: string } | null;
+  users?: { id: string; full_name: string; avatar_url?: string } | null;
+}
+
+export interface TicketReply {
+  id: string;
+  content: string;
+  created_at: string;
+  users: { id: string; full_name: string; avatar_url?: string } | null;
 }
 
 export const supportApi = {
@@ -34,11 +43,17 @@ export const supportApi = {
     );
   },
 
+  allTickets: () =>
+    apiFetch<{ data: SupportTicket[] }>('/support/tickets'),
+
   /** Get messages for a ticket */
   getMessages: (ticketId: string, page = 1, limit = 50) =>
     apiFetch<SupportMessage[]>(
       `/support/tickets/${ticketId}/messages?page=${page}&limit=${limit}`,
     ),
+
+  ticketReplies: (ticketId: string) =>
+    apiFetch<{ data: TicketReply[] }>(`/support/tickets/${ticketId}/replies`),
 
   /** Send a message to a ticket */
   sendMessage: (ticketId: string, content: string) =>
@@ -47,9 +62,15 @@ export const supportApi = {
       body: JSON.stringify({ content }),
     }),
 
+  reply: (ticketId: string, content: string) =>
+    apiFetch<{ data: TicketReply }>(`/support/tickets/${ticketId}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+
   /** Update ticket status */
-  updateStatus: (ticketId: string, status: 'in_progress' | 'resolved' | 'closed') =>
-    apiFetch<SupportTicket>(`/support/tickets/${ticketId}/status`, {
+  updateStatus: (ticketId: string, status: 'in_progress' | 'resolved' | 'closed' | string) =>
+    apiFetch<{ data: SupportTicket }>(`/support/tickets/${ticketId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),

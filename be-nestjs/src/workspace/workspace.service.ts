@@ -37,11 +37,7 @@ export class WorkspaceService {
     return data;
   }
 
-  /** PATCH status — BO only.
-   *  Allowed transitions: active | inactive | pending.
-   *  'suspended' is superadmin-only — throws ForbiddenException. */
   async updateStatus(tenantId: string, status: 'active' | 'inactive' | 'pending') {
-    // Safety guard: re-check current status; prevent BO from touching suspended tenant
     const { data: current } = await this.supabase.db
       .from('tenants')
       .select('status')
@@ -66,9 +62,7 @@ export class WorkspaceService {
     return data;
   }
 
-  /** GET tenant statistics: revenue, orders, rating */
   async getStats(tenantId: string) {
-    // ── 1. Orders: count by status ───────────────────────────────────────────
     const { data: orders, error: ordersErr } = await this.supabase.db
       .from('service_requests')
       .select('status, agreed_price, collected_amount')
@@ -85,7 +79,6 @@ export class WorkspaceService {
       r.status === 'available' || r.status === 'pending_assignment' || r.status === 'unavailable',
     ).length;
 
-    // ── 2. Revenue: sum collected_amount (fallback agreed_price) for completed ─
     const revenue = rows
       .filter(r => r.status === 'completed' || r.status === 'completed_late')
       .reduce((sum, r) => {
@@ -93,7 +86,6 @@ export class WorkspaceService {
         return sum + Number(amount);
       }, 0);
 
-    // ── 3. Rating: avg & count via service_requests.tenant_id ────────────────
     const { data: ratingRows, error: ratingErr } = await this.supabase.db
       .from('ratings')
       .select('score, service_requests!inner(tenant_id)')
@@ -106,7 +98,6 @@ export class WorkspaceService {
       ? Math.round((scores.reduce((s: number, v: number) => s + v, 0) / rating_count) * 10) / 10
       : null;
 
-    // ── 4. Distribution: score breakdown ────────────────────────────────────
     const score_distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     for (const s of scores) score_distribution[s] = (score_distribution[s] ?? 0) + 1;
 
@@ -117,7 +108,6 @@ export class WorkspaceService {
     };
   }
 
-  /** GET selected service categories of tenant (BO + OT) */
   async getServiceCategories(tenantId: string) {
     const { data, error } = await this.supabase.db
       .from('tenant_service_categories')
@@ -129,17 +119,13 @@ export class WorkspaceService {
     return (data ?? []).map((row: any) => row.service_categories);
   }
 
-  /** PUT — replace all selected categories (BO only).
-   *  Pass an empty array to clear all. */
   async setServiceCategories(tenantId: string, categoryIds: string[]) {
-    // Delete existing
     const { error: delError } = await this.supabase.db
       .from('tenant_service_categories')
       .delete()
       .eq('tenant_id', tenantId);
 
     if (delError) throw new BadRequestException(delError.message);
-
     if (categoryIds.length === 0) return [];
 
     const rows = categoryIds.map((category_id) => ({ tenant_id: tenantId, category_id }));
@@ -148,7 +134,6 @@ export class WorkspaceService {
       .insert(rows);
 
     if (insError) throw new BadRequestException(insError.message);
-
     return this.getServiceCategories(tenantId);
   }
 
@@ -177,7 +162,6 @@ export class WorkspaceService {
     return data;
   }
 
-  /** GET /workspace/payment-info — Lấy thông tin QR thanh toán */
   async getPaymentInfo(tenantId: string) {
     const { data, error } = await this.supabase.db
       .from('tenants')
@@ -188,7 +172,6 @@ export class WorkspaceService {
     return data;
   }
 
-  /** PATCH /workspace/payment-info — BO: cập nhật thông tin ngân hàng */
   async updatePaymentInfo(tenantId: string, dto: {
     bank_name?: string;
     bank_account?: string;
@@ -206,7 +189,6 @@ export class WorkspaceService {
     return data;
   }
 
-  /** POST /workspace/payment-qr — BO: upload ảnh QR ngân hàng */
   async uploadPaymentQr(tenantId: string, file: Express.Multer.File) {
     const ext = file.originalname.split('.').pop() ?? 'jpg';
     const path = `${tenantId}/qr.${ext}`;
@@ -232,7 +214,6 @@ export class WorkspaceService {
     return data;
   }
 
-  /** Public: lấy payment info công khai (cho customer + staff) */
   async getPublicPaymentInfo(tenantId: string) {
     const { data, error } = await this.supabase.db
       .from('tenants')

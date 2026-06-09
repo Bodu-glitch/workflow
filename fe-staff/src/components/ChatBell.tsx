@@ -1,0 +1,54 @@
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+import { View, Text, Pressable } from '@/tw';
+import { useAuth } from '@/context/auth';
+import { useSocketContext } from '@/context/socket';
+
+const STORAGE_KEY = 'chat_last_read_at';
+
+export async function markChatAsRead() {
+  await AsyncStorage.setItem(STORAGE_KEY, new Date().toISOString());
+}
+
+export function ChatBell() {
+  const { user } = useAuth();
+  const socket = useSocketContext();
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!socket || !user?.id) return;
+
+    const handler = (msg: any) => {
+      if (msg?.user_id !== user.id) {
+        setUnread((n) => n + 1);
+      }
+    };
+
+    socket.on('staff_chat:message', handler);
+    return () => { socket.off('staff_chat:message', handler); };
+  }, [socket, user?.id]);
+
+  return (
+    <Pressable
+      onPress={() => {
+        setUnread(0);
+        void markChatAsRead();
+        router.push('/chat');
+      }}
+      className="w-10 h-10 items-center justify-center active:opacity-60"
+    >
+      <Text className="text-xl">💬</Text>
+      {unread > 0 && (
+        <View
+          className="absolute top-1 right-1 w-4 h-4 rounded-full items-center justify-center"
+          style={{ backgroundColor: '#ba1a1a' }}
+        >
+          <Text className="text-white font-bold" style={{ fontSize: 9 }}>
+            {unread > 9 ? '9+' : unread}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}

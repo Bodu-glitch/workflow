@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, UseGuards, Query, Param } from '@nestjs/common';
 import { IsString, IsOptional } from 'class-validator';
 import { AuthService } from './auth.service.js';
 import { GoogleAuthDto } from './dto/google-auth.dto.js';
@@ -54,5 +54,39 @@ export class AuthController {
   @Patch('device-token')
   updateDeviceToken(@CurrentUser() user: { id: string }, @Body() dto: UpdateDeviceTokenDto) {
     return this.authService.updateDeviceToken(user.id, dto.device_token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('profile')
+  updateProfile(
+    @CurrentUser() user: { id: string },
+    @Body() body: { full_name?: string; phone?: string; address?: string },
+  ) {
+    return this.authService.updateCustomerProfile(user.id, body);
+  }
+
+  /** Public workspace listing — no auth required */
+  @Get('workspaces')
+  listWorkspaces(
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.authService.listPublicWorkspaces({
+      search,
+      category,
+      lat: lat ? Number(lat) : undefined,
+      lng: lng ? Number(lng) : undefined,
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 20,
+    });
+  }
+
+  @Get('workspaces/:slug')
+  getWorkspace(@Param('slug') slug: string) {
+    return this.authService.getPublicWorkspace(slug);
   }
 }

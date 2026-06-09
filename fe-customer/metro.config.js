@@ -3,6 +3,10 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
+// Fix socket.io-client ESM resolution on Metro — force CJS via main field
+config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
+config.resolver.unstable_enablePackageExports = false;
+
 const webMocks = {
   'react-native-maps': path.resolve(__dirname, 'mocks/react-native-maps.web.js'),
 };

@@ -149,6 +149,7 @@ const styles = StyleSheet.create({
   },
   invoiceBtnDisabled: { opacity: 0.6 },
   invoiceBtnText: { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
+  billLink: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 12 },
   emptyIcon: { fontSize: 48 },
   emptyText: { fontSize: 15, color: COLORS.textSecondary },

@@ -19,6 +19,7 @@ interface AuthContextValue extends AuthState {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -126,8 +127,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    try {
+      const profile = await api.get<User>('/auth/profile');
+      setState((s) => ({ ...s, user: profile }));
+    } catch { /* silent */ }
+  }, []);
+
   const logout = useCallback(async () => {
-    await supabase.auth.signOut().catch(() => {});
+    // scope: 'local' clears session from storage immediately without waiting for API;
+    // avoids hanging when the refresh token is already invalid
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     processedRef.current = null;
     setState({ user: null, token: null, loading: false });
   }, []);
@@ -142,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, loginWithGoogle, logout, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, loginWithGoogle, logout, refreshUser, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

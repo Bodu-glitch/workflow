@@ -13,4 +13,8 @@ export class SelectTenantDto {
   @IsNumber()
   @Type(() => Number)
   agreed_price?: number;
+
+  @IsOptional()
+  @IsString()
+  voucher_code?: string;
 }

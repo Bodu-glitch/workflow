@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
 import { CreateShiftDto } from './dto/create-shift.dto.js';
 import { AssignShiftDto } from './dto/assign-shift.dto.js';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto.js';
@@ -12,7 +13,10 @@ import { ReviewLeaveRequestDto } from './dto/review-leave-request.dto.js';
  */
 @Injectable()
 export class WorkScheduleService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly gateway: EventsGateway,
+  ) {}
 
   // ── Shifts ──────────────────────────────────────────────────────────────
 
@@ -83,16 +87,10 @@ export class WorkScheduleService {
       );
     if (error) throw new BadRequestException(error.message);
 
-    // Nếu phân ca cho hôm nay → set online (không ghi đè nếu đang working)
-    const today = new Date().toISOString().split('T')[0];
-    if (dto.work_date === today) {
-      await this.supabase.db
-        .from('user_tenants')
-        .update({ online_status: 'online' })
-        .in('user_id', dto.user_ids)
-        .eq('tenant_id', tenantId)
-        .neq('online_status', 'working');
+    for (const userId of dto.user_ids) {
+      this.gateway.emitScheduleUpdated(userId);
     }
+    this.gateway.emitTenantScheduleUpdated(tenantId);
 
     return data; // interceptor → { data: ShiftAssignment[] }
   }
@@ -113,27 +111,10 @@ export class WorkScheduleService {
       .eq('tenant_id', tenantId);
     if (error) throw new BadRequestException(error.message);
 
-    // Nếu xóa ca của hôm nay và không còn ca nào khác → set offline
-    if (assignment) {
-      const today = new Date().toISOString().split('T')[0];
-      if (assignment.work_date === today) {
-        const { data: remaining } = await this.supabase.db
-          .from('shift_assignments')
-          .select('id')
-          .eq('user_id', assignment.user_id)
-          .eq('tenant_id', tenantId)
-          .eq('work_date', today);
-        if ((remaining?.length ?? 0) === 0) {
-          // Chỉ revert từ 'online' → 'offline', không đụng đến 'working'
-          await this.supabase.db
-            .from('user_tenants')
-            .update({ online_status: 'offline' })
-            .eq('user_id', assignment.user_id)
-            .eq('tenant_id', tenantId)
-            .eq('online_status', 'online');
-        }
-      }
+    if (assignment?.user_id) {
+      this.gateway.emitScheduleUpdated(assignment.user_id);
     }
+    this.gateway.emitTenantScheduleUpdated(tenantId);
 
     return { success: true };
   }
@@ -177,18 +158,9 @@ export class WorkScheduleService {
         message: 'Đơn nghỉ phép không tồn tại hoặc đã được xử lý',
       });
 
-    // Đơn nghỉ được duyệt và hôm nay nằm trong khoảng nghỉ → set offline
-    if (dto.action === 'approved') {
-      const today = new Date().toISOString().split('T')[0];
-      if (today >= data.start_date && today <= data.end_date) {
-        await this.supabase.db
-          .from('user_tenants')
-          .update({ online_status: 'offline' })
-          .eq('user_id', data.user_id)
-          .eq('tenant_id', tenantId)
-          .neq('online_status', 'working'); // không ghi đè nếu đang làm task
-      }
-    }
+    this.gateway.emitScheduleUpdated(data.user_id);
+    this.gateway.emitTenantScheduleUpdated(tenantId);
+    this.gateway.emitStaffUpdated(tenantId);
 
     return data;
   }
@@ -226,6 +198,7 @@ export class WorkScheduleService {
       .select()
       .single();
     if (error) throw new BadRequestException(error.message);
+    this.gateway.emitTenantScheduleUpdated(tenantId);
     return data;
   }
 }

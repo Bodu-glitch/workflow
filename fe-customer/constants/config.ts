@@ -20,15 +20,22 @@ export const COLORS = {
 };
 
 export const STATUS_LABELS: Record<string, string> = {
+  // service_request statuses
   unavailable: 'Đang xem xét',
   available: 'Đang tìm kiếm',
   negotiating: 'Đang thương lượng',
-  pending_assignment: 'Đang phân công',
-  assigned: 'Đang đến',
+  pending_assignment: 'Chờ nhân viên nhận',
+  assigned: 'Nhân viên đang đến',
   in_progress: 'Đang xử lý',
   completed: 'Hoàn thành',
   completed_late: 'Hoàn thành (trễ)',
   cancelled: 'Đã hủy',
+  // task statuses (after BO creates task from request)
+  todo: 'Chờ nhân viên nhận',
+  moving: '🚗 Nhân viên đang di chuyển',
+  arrived: '📍 Nhân viên đã đến',
+  done: '✅ Hoàn thành',
+  rejected: 'Đã từ chối',
 };
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -41,6 +48,12 @@ export const STATUS_COLORS: Record<string, string> = {
   completed: '#10B981',
   completed_late: '#F59E0B',
   cancelled: '#9CA3AF',
+  // task statuses
+  todo: '#F59E0B',
+  moving: '#3B82F6',
+  arrived: '#8B5CF6',
+  done: '#10B981',
+  rejected: '#EF4444',
 };
 
 export const CATEGORY_ICONS: Record<string, string> = {

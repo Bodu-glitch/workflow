@@ -1,6 +1,7 @@
 import {
-  Controller, Get, Patch, Post, Put,
-  Body, Param, UseGuards, UseInterceptors, UploadedFile,
+  Controller, Get, Patch, Post, Put, Param,
+  Body, UseGuards, UseInterceptors, UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WorkspaceService } from './workspace.service.js';
@@ -42,8 +43,7 @@ export class WorkspaceController {
     return this.workspaceService.updateProfile(user.tenant_id, dto);
   }
 
-  /** PATCH /workspace/status — BO only: đổi trạng thái workspace (active/inactive/pending)
-   *  'suspended' không được phép — admin-only */
+  /** PATCH /workspace/status — BO only */
   @Patch('status')
   @UseGuards(RolesGuard)
   @Roles('business_owner')
@@ -62,7 +62,7 @@ export class WorkspaceController {
     return this.workspaceService.getStats(user.tenant_id);
   }
 
-  /** GET /workspace/service-categories — BO + OT: xem dịch vụ tenant đã đăng ký */
+  /** GET /workspace/service-categories */
   @Get('service-categories')
   @UseGuards(RolesGuard)
   @Roles('business_owner', 'operator')
@@ -70,7 +70,7 @@ export class WorkspaceController {
     return this.workspaceService.getServiceCategories(user.tenant_id);
   }
 
-  /** PUT /workspace/service-categories — BO only: cập nhật toàn bộ danh sách dịch vụ */
+  /** PUT /workspace/service-categories */
   @Put('service-categories')
   @UseGuards(RolesGuard)
   @Roles('business_owner')
@@ -81,7 +81,7 @@ export class WorkspaceController {
     return this.workspaceService.setServiceCategories(user.tenant_id, dto.category_ids);
   }
 
-  /** POST /workspace/logo — BO only: upload workspace logo */
+  /** POST /workspace/logo */
   @Post('logo')
   @UseGuards(RolesGuard)
   @Roles('business_owner')
@@ -101,7 +101,7 @@ export class WorkspaceController {
     return this.workspaceService.getPaymentInfo(user.tenant_id);
   }
 
-  /** PATCH /workspace/payment-info — BO: cập nhật thông tin ngân hàng + commission */
+  /** PATCH /workspace/payment-info — BO: cập nhật thông tin ngân hàng */
   @Patch('payment-info')
   @UseGuards(RolesGuard)
   @Roles('business_owner')

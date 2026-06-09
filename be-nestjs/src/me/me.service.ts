@@ -1,6 +1,10 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { EventsGateway } from '../gateway/events.gateway.js';
+import { haversineDistance } from '../common/utils/haversine.util.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
+
+const ACTIVE_STATUSES = ['todo', 'moving', 'arrived', 'in_progress'] as const;
 
 interface CurrentUser {
   id: string;
@@ -9,7 +13,22 @@ interface CurrentUser {
 
 @Injectable()
 export class MeService {
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    private gateway: EventsGateway,
+  ) {}
+
+  /** Emit socket event to customer tracking a request linked to this task */
+  private async notifyCustomerTaskStatus(taskId: string, taskStatus: string) {
+    const { data: req } = await this.supabase.db
+      .from('service_requests')
+      .select('id')
+      .eq('task_id', taskId)
+      .maybeSingle();
+    if (req?.id) {
+      this.gateway.emitRequestStatusChanged(req.id, taskStatus);
+    }
+  }
 
   async getProfile(userId: string, tenantId?: string) {
     const { data, error } = await this.supabase.db
@@ -101,6 +120,149 @@ export class MeService {
     return { message: 'Certificate deleted' };
   }
 
+  // ── Workspace services & payment ────────────────────────────────────────────
+
+  async getWorkspaceServices(tenantId: string) {
+    const { data, error } = await this.supabase.db
+      .from('tenant_services')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .order('name');
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async getPaymentInfo(tenantId: string) {
+    const { data } = await this.supabase.db
+      .from('tenants')
+      .select('settings')
+      .eq('id', tenantId)
+      .single();
+    return (data?.settings as any)?.payment ?? null;
+  }
+
+  async getTaskItems(taskId: string) {
+    const { data, error } = await this.supabase.db
+      .from('task_service_items')
+      .select('id, service_id, label, unit_price, is_custom, checked')
+      .eq('task_id', taskId)
+      .order('created_at');
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async saveTaskItems(taskId: string, items: any[]) {
+    // Replace all items for this task
+    await this.supabase.db.from('task_service_items').delete().eq('task_id', taskId);
+    if (items.length === 0) return [];
+    const rows = items.map((item) => ({
+      task_id: taskId,
+      service_id: item.service_id ?? null,
+      label: item.label,
+      unit_price: Number(item.unit_price ?? 0),
+      is_custom: item.is_custom ?? false,
+      checked: item.checked ?? true,
+    }));
+    const { data, error } = await this.supabase.db
+      .from('task_service_items')
+      .insert(rows)
+      .select('id, service_id, label, unit_price, is_custom, checked');
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  // ── Task status progression ─────────────────────────────────────────────────
+
+  private async getAssignedTask(taskId: string, userId: string, tenantId: string) {
+    const { data: task, error } = await this.supabase.db
+      .from('tasks')
+      .select('id, status, tenant_id, location_lat, location_lng, location_radius_m')
+      .eq('id', taskId)
+      .eq('tenant_id', tenantId)
+      .single();
+    if (error || !task) throw new NotFoundException({ code: 'TASK_NOT_FOUND', message: 'Task not found' });
+
+    const { data: assignment } = await this.supabase.db
+      .from('task_assignments')
+      .select('user_id')
+      .eq('task_id', taskId)
+      .eq('user_id', userId)
+      .single();
+    if (!assignment) throw new UnprocessableEntityException({ code: 'NOT_ASSIGNEE', message: 'Not assigned to this task' });
+
+    return task;
+  }
+
+  async startMoving(taskId: string, user: CurrentUser) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (task.status !== 'todo') {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task must be in todo status' });
+    }
+    const { error } = await this.supabase.db.from('tasks').update({ status: 'moving' }).eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+    void this.notifyCustomerTaskStatus(taskId, 'moving');
+    return { status: 'moving' };
+  }
+
+  async markArrived(taskId: string, user: CurrentUser) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (task.status !== 'moving') {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task must be in moving status' });
+    }
+    const { error } = await this.supabase.db.from('tasks').update({ status: 'arrived' }).eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+    void this.notifyCustomerTaskStatus(taskId, 'arrived');
+    return { status: 'arrived' };
+  }
+
+  async beginWork(taskId: string, user: CurrentUser, gpsLat: number, gpsLng: number) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (task.status !== 'arrived') {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task must be in arrived status' });
+    }
+
+    // GPS verification
+    if (task.location_lat && task.location_lng) {
+      const dist = haversineDistance(task.location_lat, task.location_lng, gpsLat, gpsLng);
+      const radius = task.location_radius_m ?? 100;
+      if (dist > radius) {
+        throw new UnprocessableEntityException({
+          code: 'GPS_OUT_OF_RANGE',
+          message: `Bạn cách vị trí nhiệm vụ ${Math.round(dist)}m. Hãy đến đúng địa điểm.`,
+        });
+      }
+    }
+
+    const { error } = await this.supabase.db.from('tasks').update({ status: 'in_progress' }).eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+    void this.notifyCustomerTaskStatus(taskId, 'in_progress');
+    return { status: 'in_progress' };
+  }
+
+  async rejectTask(taskId: string, reason: string, user: CurrentUser) {
+    const task = await this.getAssignedTask(taskId, user.id, user.tenant_id);
+    if (!['todo', 'moving', 'arrived'].includes(task.status)) {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Task cannot be rejected in its current status' });
+    }
+
+    const { error } = await this.supabase.db
+      .from('tasks')
+      .update({ status: 'rejected', cancel_reason: reason })
+      .eq('id', taskId);
+    if (error) throw new BadRequestException(error.message);
+
+    await this.supabase.db.from('audit_logs').insert({
+      tenant_id: task.tenant_id,
+      task_id: taskId,
+      user_id: user.id,
+      action: 'task_rejected',
+      metadata: { reason },
+    });
+
+    void this.notifyCustomerTaskStatus(taskId, 'rejected');
+    return { status: 'rejected' };
+  }
+
   async getStaffProfile(staffId: string) {
     const { data, error } = await this.supabase.db
       .from('users')
@@ -181,6 +343,8 @@ export class MeService {
       metadata: { removed_user_id: userId, reason: reason ?? null, self_leave: true },
     });
 
+    this.gateway.emitStaffUpdated(tenantId);
+
     return { message: 'Left workspace successfully' };
   }
 
@@ -201,7 +365,10 @@ export class MeService {
       `, { count: 'exact' })
       .eq('user_id', user.id);
 
-    if (status) {
+    if (status === 'active') {
+      // "Đang thực hiện" bao gồm cả moving/arrived/in_progress
+      query = query.in('tasks.status', ['moving', 'arrived', 'in_progress']);
+    } else if (status) {
       query = query.eq('tasks.status', status);
     }
 
@@ -214,6 +381,93 @@ export class MeService {
     // Flatten: extract the nested tasks
     const tasks = (data ?? []).map((row: any) => row.tasks).filter(Boolean);
     return { data: tasks, meta: { total: count, page, limit } };
+  }
+
+  async getPoolTasks(user: CurrentUser, pagination: PaginationDto) {
+    const { page = 1, limit = 20 } = pagination;
+    const offset = (page - 1) * limit;
+
+    // Pool = tasks in tenant with no assignees, status todo
+    const { data, count, error } = await this.supabase.db
+      .from('tasks')
+      .select(`
+        id, title, description, status, priority,
+        location_name, location_lat, location_lng,
+        scheduled_at, deadline, created_at,
+        creator:created_by(id, full_name),
+        task_assignments(user_id)
+      `, { count: 'exact' })
+      .eq('tenant_id', user.tenant_id)
+      .eq('status', 'todo')
+      .is('task_assignments.user_id', null)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw new BadRequestException(error.message);
+    // Filter out tasks that already have assignments (Supabase doesn't support NOT EXISTS directly)
+    const pool = (data ?? []).filter((t: any) => !t.task_assignments || t.task_assignments.length === 0);
+    return { data: pool, meta: { total: count, page, limit } };
+  }
+
+  async claimPoolTask(taskId: string, user: CurrentUser) {
+    // 1. Fetch task — must belong to same tenant, status todo, no assignees
+    const { data: task, error: taskErr } = await this.supabase.db
+      .from('tasks')
+      .select('id, title, status, tenant_id, scheduled_at, deadline')
+      .eq('id', taskId)
+      .eq('tenant_id', user.tenant_id)
+      .single();
+
+    if (taskErr || !task) throw new NotFoundException({ code: 'TASK_NOT_FOUND', message: 'Task not found' });
+    if (task.status !== 'todo') throw new UnprocessableEntityException({ code: 'TASK_NOT_AVAILABLE', message: 'Task is not available' });
+
+    const { data: existing } = await this.supabase.db
+      .from('task_assignments')
+      .select('user_id')
+      .eq('task_id', taskId)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      throw new UnprocessableEntityException({ code: 'ALREADY_CLAIMED', message: 'Task was already claimed' });
+    }
+
+    // 2. Time conflict: staff has an in_progress task whose deadline overlaps
+    const newStart = task.scheduled_at ? new Date(task.scheduled_at) : null;
+    const newEnd   = task.deadline      ? new Date(task.deadline)      : null;
+
+    if (newStart || newEnd) {
+      const { data: myTasks } = await this.supabase.db
+        .from('task_assignments')
+        .select('tasks!inner(status, scheduled_at, deadline)')
+        .eq('user_id', user.id)
+        .in('tasks.status', [...ACTIVE_STATUSES]);
+
+      const conflicts = (myTasks ?? []).filter((row: any) => {
+        const t = row.tasks;
+        if (!t) return false;
+        const s = t.scheduled_at ? new Date(t.scheduled_at) : null;
+        const e = t.deadline      ? new Date(t.deadline)      : null;
+        // Overlap: newStart < e AND newEnd > s
+        if (newStart && e && newStart >= e) return false;
+        if (newEnd   && s && newEnd   <= s) return false;
+        return true;
+      });
+
+      if (conflicts.length > 0) {
+        throw new UnprocessableEntityException({ code: 'TIME_CONFLICT', message: 'Thời gian nhiệm vụ này trùng với nhiệm vụ bạn đang có' });
+      }
+    }
+
+    // 3. Claim — insert assignment (unique constraint prevents race condition)
+    const { error: insertErr } = await this.supabase.db
+      .from('task_assignments')
+      .insert({ task_id: taskId, user_id: user.id, assigned_by: user.id });
+
+    if (insertErr) {
+      throw new UnprocessableEntityException({ code: 'ALREADY_CLAIMED', message: 'Task was claimed by another staff member' });
+    }
+
+    return { message: 'Đã nhận nhiệm vụ', task_id: taskId };
   }
 
   async getMyTaskHistory(user: CurrentUser, pagination: PaginationDto) {

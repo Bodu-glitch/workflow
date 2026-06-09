@@ -16,38 +16,49 @@ export interface ServicePricing {
   category?: { id: string; name: string; slug: string; icon_url?: string | null } | null;
 }
 
+export interface CreatePricingInput {
+  category_id: string;
+  service_name: string;
+  price_min?: number;
+  price_max?: number;
+  price_fixed?: number;
+  estimated_duration_minutes?: number;
+}
+
+export type UpdatePricingInput = Partial<CreatePricingInput & {
+  is_active: boolean;
+}>;
+
+export const categoriesApi = {
+  listAll: () => apiFetch<{ data: { id: string; name: string; slug: string; icon_url?: string; sort_order: number; is_active: boolean }[] }>('/categories'),
+};
+
 export const pricingApi = {
   list: (category_id?: string) => {
     const qs = category_id ? `?category_id=${category_id}` : '';
     return apiFetch<{ data: ServicePricing[] }>(`/pricing${qs}`);
   },
 
-  create: (dto: {
-    category_id: string;
-    service_name: string;
-    price_fixed?: number;
-    price_min?: number;
-    price_max?: number;
-    estimated_duration_minutes?: number;
-  }) =>
+  listByTenant: (tenantId: string, categoryId?: string) => {
+    const q = categoryId ? `?category_id=${categoryId}` : '';
+    return apiFetch<{ data: ServicePricing[] }>(`/pricing/tenant/${tenantId}${q}`);
+  },
+
+  create: (input: CreatePricingInput) =>
     apiFetch<{ data: ServicePricing }>('/pricing', {
       method: 'POST',
-      body: JSON.stringify(dto),
+      body: JSON.stringify(input),
     }),
 
-  update: (id: string, dto: Partial<{
-    service_name: string;
-    price_fixed: number;
-    price_min: number;
-    price_max: number;
-    estimated_duration_minutes: number;
-    is_active: boolean;
-  }>) =>
+  update: (id: string, input: UpdatePricingInput) =>
     apiFetch<{ data: ServicePricing }>(`/pricing/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify(dto),
+      body: JSON.stringify(input),
     }),
 
   delete: (id: string) =>
+    apiFetch<{ message: string }>(`/pricing/${id}`, { method: 'DELETE' }),
+
+  remove: (id: string) =>
     apiFetch<{ message: string }>(`/pricing/${id}`, { method: 'DELETE' }),
 };

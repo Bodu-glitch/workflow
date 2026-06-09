@@ -47,3 +47,13 @@ export function disconnectSocket() {
   }
   socket = null;
 }
+
+/** Alias for origin/master consumers */
+export function createSocket(token: string, tenantId?: string | null): Socket {
+  return connectSocket(token, tenantId);
+}
+
+/** Alias for origin/master consumers */
+export function destroySocket() {
+  disconnectSocket();
+}

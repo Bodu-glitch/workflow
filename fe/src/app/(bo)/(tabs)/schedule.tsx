@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ScrollView, TouchableOpacity, Modal, ActivityIndicator, Alert } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, TextInput } from '@/tw';
 import { scheduleApi } from '@/lib/api/schedule';
 import { staffApi } from '@/lib/api/staff';
 import { useToast } from '@/context/toast';
+import { useAuth } from '@/context/auth';
+import { useSocketContext } from '@/context/socket';
 import type { WorkShift, ShiftAssignment, LeaveRequest, LeaveType } from '@/types/api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -147,6 +149,18 @@ function LeaveCard({
 export default function BOScheduleScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const socket = useSocketContext();
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['shift-assignments'] });
+      qc.invalidateQueries({ queryKey: ['leave-requests'] });
+    };
+    socket.on('schedule:updated', handler);
+    return () => { socket.off('schedule:updated', handler); };
+  }, [socket, qc]);
 
   const [tab, setTab] = useState<'shifts' | 'leaves'>('shifts');
 
@@ -438,7 +452,7 @@ export default function BOScheduleScreen() {
       ) : (
         <>
           {/* Leave filter pills */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 12 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
             {([['', 'Tất cả'], ['pending', 'Chờ duyệt'], ['approved', 'Đã duyệt'], ['rejected', 'Từ chối']] as const).map(([key, label]) => (
               <Pressable
                 key={key}

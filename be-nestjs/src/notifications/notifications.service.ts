@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { EventsGateway } from '../gateway/events.gateway.js';
@@ -19,7 +19,7 @@ export class NotificationsService {
   constructor(
     private supabase: SupabaseService,
     private config: ConfigService,
-    @Inject(forwardRef(() => EventsGateway)) private gateway: EventsGateway,
+    private gateway: EventsGateway,
   ) {}
 
   async sendPushNotification(payload: PushPayload): Promise<void> {
@@ -43,7 +43,6 @@ export class NotificationsService {
       if (error) {
         console.error('[Notifications] DB insert failed:', error.message);
       } else if (inserted) {
-        // Emit socket event to each user's personal room
         for (const notif of inserted) {
           this.gateway.emitNotification(notif.user_id, notif);
         }

@@ -1,12 +1,37 @@
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from '../context/auth';
+import { usePushToken } from '../hooks/usePushToken';
+import { connectSocket, disconnectSocket } from '../lib/socket';
 
 function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { user, token, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  usePushToken(user?.id ?? null);
+
+  // Keep socket alive for the session — drives real-time updates across all screens
+  useEffect(() => {
+    if (token) {
+      connectSocket(token);
+    } else {
+      disconnectSocket();
+    }
+  }, [token]);
+
+  // Navigate to the relevant request when user taps a push notification
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, string> | undefined;
+      const requestId = data?.request_id;
+      if (requestId) {
+        router.push(`/request/${requestId}` as any);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -31,6 +56,7 @@ function RootNavigator() {
         <Stack.Screen name="profile" options={{ headerShown: true, headerTitle: 'Hồ sơ', presentation: 'card' }} />
         <Stack.Screen name="company" options={{ headerShown: true, headerTitle: 'Chi tiết', presentation: 'card' }} />
         <Stack.Screen name="notifications" options={{ headerShown: true, headerTitle: 'Thông báo', presentation: 'card' }} />
+        <Stack.Screen name="workspace" />
       </Stack>
     </>
   );
