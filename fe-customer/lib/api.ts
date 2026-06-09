@@ -49,6 +49,28 @@ async function request<T>(
   return (json as { data: T }).data ?? json;
 }
 
+// Like request but returns the full JSON (data + meta) without unwrapping the `data` key.
+async function requestFull<T>(
+  method: string,
+  path: string,
+  options: { body?: unknown; formData?: FormData; tenantId?: string } = {},
+): Promise<T> {
+  const token = await getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (options.tenantId) headers['X-Tenant-ID'] = options.tenantId;
+  let body: BodyInit | undefined;
+  if (options.formData) { body = options.formData; }
+  else if (options.body !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(options.body); }
+  const res = await fetch(`${API_BASE_URL}${path}`, { method, headers, body });
+  const json = await res.json();
+  if (!res.ok) {
+    const err = json as ApiError;
+    throw Object.assign(new Error(err.error?.message ?? 'Request failed'), { code: err.error?.code ?? 'UNKNOWN', status: res.status });
+  }
+  return json as T;
+}
+
 export const api = {
   get: <T>(path: string, opts?: { tenantId?: string }) =>
     request<T>('GET', path, opts),
@@ -76,7 +98,7 @@ export const api = {
     if (params.search) q.set('search', params.search);
     if (params.category) q.set('category', params.category);
     if (params.page) q.set('page', String(params.page));
-    return request<{ data: Workspace[]; meta: { total: number; page: number; limit: number } }>(
+    return requestFull<{ data: Workspace[]; meta: { total: number; page: number; limit: number } }>(
       'GET', `/auth/workspaces${q.toString() ? `?${q}` : ''}`,
     );
   },

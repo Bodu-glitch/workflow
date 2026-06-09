@@ -32,7 +32,7 @@ function getPriceMin(t: MatchingTenant): number {
 export default function NewRequestScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ category_slug?: string }>();
-  const { location } = useLocation();
+  const { location, error: locationError } = useLocation();
 
   const [step, setStep] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -60,8 +60,11 @@ export default function NewRequestScreen() {
   useEffect(() => {
     if (location && !locationCoords) {
       setLocationCoords({ lat: location.latitude, lng: location.longitude });
+    } else if (locationError && !locationCoords) {
+      // GPS unavailable — fall back to HCM City center so submission can proceed
+      setLocationCoords({ lat: 10.8231, lng: 106.6297 });
     }
-  }, [location]);
+  }, [location, locationError]);
 
   async function fetchCategories() {
     try {

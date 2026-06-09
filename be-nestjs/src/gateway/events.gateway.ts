@@ -73,7 +73,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       let role = dbUser.role;
 
       if (role !== 'superadmin' && role !== 'customer') {
-        const tenantHeader = client.handshake.headers['x-tenant-id'] as string | undefined;
+        // Browsers can't set custom WS headers — tenant ID is passed via auth payload
+        const tenantIdFromAuth = (client.handshake.auth as any)?.tenantId as string | undefined;
+        const tenantHeader = (client.handshake.headers['x-tenant-id'] as string | undefined) ?? tenantIdFromAuth;
         if (tenantHeader) {
           const { data: membership } = await this.supabase.db
             .from('user_tenants')

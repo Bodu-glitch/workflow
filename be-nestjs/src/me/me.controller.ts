@@ -125,6 +125,15 @@ export class MeController {
     return this.meService.claimPoolTask(id, user);
   }
 
+  @Post('tasks/:id/reject')
+  rejectTask(
+    @Param('id') id: string,
+    @Body('reason') reason: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.meService.rejectTask(id, reason, user);
+  }
+
   @Get('tasks/:id/items')
   getTaskItems(@Param('id') id: string) {
     return this.meService.getTaskItems(id);

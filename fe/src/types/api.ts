@@ -174,10 +174,9 @@ export type AuditAction =
 export interface AuditLog {
   id: string;
   action: AuditAction;
-  actor_id: string;
-  actor_name: string;
-  entity_type: string;
-  entity_id: string;
+  user_id: string;
+  actor: { id: string; role: string; full_name: string } | null;
+  task: { id: string; title: string } | null;
   metadata: Record<string, unknown>;
   created_at: string;
 }

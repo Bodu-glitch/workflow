@@ -65,7 +65,7 @@ export class SupportService {
         ticket_id: ticket.id,
         content: dto.description,
       })
-      .select('id, user_id, content, type, task_id, ticket_id, created_at, tenant_id')
+      .select('id, user_id, content, type, task_id, ticket_id, created_at, tenant_id, users!chat_messages_user_id_fkey(full_name)')
       .single();
 
     if (msgError) throw new BadRequestException(msgError.message);
@@ -135,7 +135,7 @@ export class SupportService {
         ticket_id: ticketId,
         content: dto.content,
       })
-      .select()
+      .select('id, user_id, content, type, task_id, ticket_id, created_at, tenant_id, users!chat_messages_user_id_fkey(full_name)')
       .single();
 
     if (msgError) throw new BadRequestException(msgError.message);

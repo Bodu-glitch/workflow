@@ -35,9 +35,9 @@ export default function ChatScreen() {
     joinRequestRoom(id);
 
     api
-      .get<{ data: ChatMessage[] }>(`/requests/${id}/chat/${channel}`)
+      .get<ChatMessage[]>(`/requests/${id}/chat/${channel}`)
       .then((res) => {
-        setMessages((res as any).data ?? []);
+        setMessages(Array.isArray(res) ? res : []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -46,7 +46,19 @@ export default function ChatScreen() {
   useEffect(() => {
     const off = onChatMessage((data) => {
       if (data.requestId !== id || data.channel !== channel) return;
-      setMessages((prev) => [...prev, data.message as ChatMessage]);
+      const incoming = data.message as ChatMessage;
+      setMessages((prev) => {
+        // Replace matching optimistic message from the same sender; otherwise append
+        const optIdx = prev.findIndex(
+          (m) => m.id.startsWith('opt-') && m.user_id === incoming.user_id && m.content === incoming.content,
+        );
+        if (optIdx !== -1) {
+          const next = [...prev];
+          next[optIdx] = incoming;
+          return next;
+        }
+        return [...prev, incoming];
+      });
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     });
     return off;
