@@ -278,6 +278,8 @@ export interface ServiceCategory {
   icon_url?: string;
   sort_order: number;
   is_active: boolean;
+}
+
 // ─── Tenant Services ────────────────────────────────────────────────────────────
 
 export interface TenantService {

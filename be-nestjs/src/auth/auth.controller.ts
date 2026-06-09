@@ -60,7 +60,7 @@ export class AuthController {
   @Patch('profile')
   updateProfile(
     @CurrentUser() user: { id: string },
-    @Body() body: { full_name?: string; phone?: string },
+    @Body() body: { full_name?: string; phone?: string; address?: string },
   ) {
     return this.authService.updateCustomerProfile(user.id, body);
   }

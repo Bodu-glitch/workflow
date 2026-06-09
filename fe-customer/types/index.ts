@@ -5,6 +5,7 @@ export interface User {
   avatar_url: string | null;
   role: string;
   phone?: string | null;
+  address?: string | null;
 }
 
 export interface Category {
