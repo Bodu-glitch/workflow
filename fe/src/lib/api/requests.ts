@@ -86,6 +86,12 @@ export const requestsApi = {
     apiFetch<{ task_id: string; message: string }>(`/requests/${id}/create-task`, {
       method: 'POST',
     }),
+
+  overrideBill: (id: string, agreed_price: number, override_note?: string) =>
+    apiFetch<{ id: string; agreed_price: number; status: string }>(`/requests/${id}/override-bill`, {
+      method: 'PATCH',
+      body: JSON.stringify({ agreed_price, override_note }),
+    }),
 };
 
 export interface ChatMessage {

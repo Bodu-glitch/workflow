@@ -9,7 +9,7 @@ export class WorkspaceService {
   async getProfile(tenantId: string) {
     const { data, error } = await this.supabase.db
       .from('tenants')
-      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status, created_at')
+      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status, lat, lng, created_at')
       .eq('id', tenantId)
       .single();
     if (error || !data) throw new NotFoundException('Workspace not found');
@@ -25,12 +25,14 @@ export class WorkspaceService {
     if (dto.benefits !== undefined) update.benefits = dto.benefits.trim();
     if (dto.income_level !== undefined) update.income_level = dto.income_level.trim();
     if (dto.policies !== undefined) update.policies = dto.policies.trim();
+    if (dto.lat !== undefined) update.lat = dto.lat;
+    if (dto.lng !== undefined) update.lng = dto.lng;
 
     const { data, error } = await this.supabase.db
       .from('tenants')
       .update(update)
       .eq('id', tenantId)
-      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status')
+      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status, lat, lng')
       .single();
 
     if (error) throw new BadRequestException(error.message);
@@ -160,6 +162,21 @@ export class WorkspaceService {
 
     if (error) throw new BadRequestException(error.message);
     return data;
+  }
+
+  async getCommissionConfig(tenantId: string) {
+    const { data } = await this.supabase.db.from('tenants').select('commission_config').eq('id', tenantId).single();
+    return (data?.commission_config as any) ?? { platform_pct: 10, tenant_pct: 70, staff_pct: 20 };
+  }
+
+  async updateCommissionConfig(tenantId: string, config: { platform_pct: number; tenant_pct: number; staff_pct: number }) {
+    const total = config.platform_pct + config.tenant_pct + config.staff_pct;
+    if (total !== 100) throw new BadRequestException({ code: 'INVALID_COMMISSION', message: `Tổng phần trăm phải bằng 100 (hiện tại: ${total})` });
+    const { error } = await this.supabase.db.from('tenants')
+      .update({ commission_config: config, updated_at: new Date().toISOString() })
+      .eq('id', tenantId);
+    if (error) throw new BadRequestException(error.message);
+    return config;
   }
 
   async getPaymentInfo(tenantId: string) {

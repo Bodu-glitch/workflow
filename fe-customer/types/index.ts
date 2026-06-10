@@ -1,3 +1,10 @@
+export interface SavedAddress {
+  id: string;
+  label: string;
+  address: string;
+  is_default: boolean;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -6,6 +13,7 @@ export interface User {
   role: string;
   phone?: string | null;
   address?: string | null;
+  addresses?: SavedAddress[];
 }
 
 export interface Category {

@@ -1,5 +1,11 @@
 import { apiFetch } from './client';
 
+export interface PeakHourSlot {
+  start_time: string;
+  end_time: string;
+  multiplier: number;
+}
+
 export interface ServicePricing {
   id: string;
   tenant_id: string;
@@ -10,6 +16,9 @@ export interface ServicePricing {
   price_fixed: number | null;
   currency: string;
   estimated_duration_minutes: number | null;
+  travel_fee: number;
+  surcharge_percent: number;
+  peak_hours_config: PeakHourSlot[];
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -23,6 +32,9 @@ export interface CreatePricingInput {
   price_max?: number;
   price_fixed?: number;
   estimated_duration_minutes?: number;
+  travel_fee?: number;
+  surcharge_percent?: number;
+  peak_hours_config?: PeakHourSlot[];
 }
 
 export type UpdatePricingInput = Partial<CreatePricingInput & {

@@ -238,4 +238,59 @@ export class VouchersService {
       },
     };
   }
+
+  async getStats(voucherId: string, user: CurrentUser) {
+    const { data: voucher } = await this.supabase.db
+      .from('vouchers').select('id, tenant_id, code, name, used_count').eq('id', voucherId).single();
+    if (!voucher) throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Voucher not found' });
+    if (voucher.tenant_id !== user.tenant_id) throw new ForbiddenException();
+
+    const { data: usages } = await this.supabase.db
+      .from('service_requests')
+      .select('discount_amount')
+      .eq('voucher_id', voucherId)
+      .not('discount_amount', 'is', null);
+
+    const total_discount = (usages ?? []).reduce((s: number, r: any) => s + Number(r.discount_amount || 0), 0);
+
+    return {
+      voucher_id: voucherId,
+      code: voucher.code,
+      name: voucher.name,
+      used_count: voucher.used_count,
+      total_discount_given: Math.round(total_discount),
+    };
+  }
+
+  async notifyCustomers(voucherId: string, message: string | undefined, user: CurrentUser) {
+    const { data: voucher } = await this.supabase.db
+      .from('vouchers').select('id, tenant_id, code, name, is_active').eq('id', voucherId).single();
+    if (!voucher) throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Voucher not found' });
+    if (voucher.tenant_id !== user.tenant_id) throw new ForbiddenException();
+    if (!voucher.is_active) throw new BadRequestException({ code: 'VOUCHER_INACTIVE', message: 'Voucher is inactive' });
+
+    // Get all customers who have used services from this tenant
+    const { data: customers } = await this.supabase.db
+      .from('service_requests')
+      .select('customer_id')
+      .eq('tenant_id', user.tenant_id!)
+      .in('status', ['completed', 'completed_late']);
+
+    const customerIds = [...new Set((customers ?? []).map((r: any) => r.customer_id).filter(Boolean))];
+
+    if (customerIds.length === 0) return { sent: 0 };
+
+    // Insert notifications for each customer
+    const rows = customerIds.map((uid: string) => ({
+      user_id: uid,
+      type: 'voucher_received',
+      title: message ?? `Bạn có mã giảm giá mới!`,
+      body: `Dùng mã "${voucher.code}" để được giảm giá khi đặt dịch vụ.`,
+      data: { voucher_id: voucherId, voucher_code: voucher.code },
+    }));
+
+    await this.supabase.db.from('notifications').insert(rows);
+
+    return { sent: customerIds.length };
+  }
 }

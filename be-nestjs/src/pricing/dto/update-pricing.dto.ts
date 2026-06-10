@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsInt, IsBoolean, Min } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsInt, IsBoolean, IsArray, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdatePricingDto {
@@ -33,4 +33,20 @@ export class UpdatePricingDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(0)
+  travel_fee?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(0)
+  surcharge_percent?: number;
+
+  @IsOptional()
+  @IsArray()
+  peak_hours_config?: Array<{ start_time: string; end_time: string; multiplier: number }>;
 }

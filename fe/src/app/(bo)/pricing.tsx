@@ -3,7 +3,8 @@ import { Alert, Platform, ActivityIndicator, Modal, RefreshControl, TextInput as
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { useAuth } from '@/context/auth';
-import { pricingApi, categoriesApi, ServicePricing } from '@/lib/api/pricing';
+import { pricingApi, categoriesApi, ServicePricing, PeakHourSlot } from '@/lib/api/pricing';
+import { workspaceApi } from '@/lib/api/workspace';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 import type { ServiceCategory } from '@/types/api';
@@ -16,6 +17,9 @@ interface PricingForm {
   price_min: string;
   price_max: string;
   estimated_duration_minutes: string;
+  travel_fee: string;
+  surcharge_percent: string;
+  peak_hours: PeakHourSlot[];
 }
 
 const EMPTY_FORM: PricingForm = {
@@ -26,11 +30,101 @@ const EMPTY_FORM: PricingForm = {
   price_min: '',
   price_max: '',
   estimated_duration_minutes: '',
+  travel_fee: '',
+  surcharge_percent: '',
+  peak_hours: [],
 };
 
 function formatPrice(n: number | null | undefined): string {
   if (n == null) return '';
   return n.toLocaleString('vi-VN') + '₫';
+}
+
+function CommissionModal({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [platform, setPlatform] = useState('10');
+  const [tenant, setTenant] = useState('70');
+  const [staff, setStaff] = useState('20');
+  const [saving, setSaving] = useState(false);
+
+  const { data: cfg } = useQuery({
+    queryKey: ['commission-config'],
+    queryFn: () => workspaceApi.getCommissionConfig(),
+    enabled: visible,
+  });
+
+  useEffect(() => {
+    if (!cfg) return;
+    setPlatform(String(cfg.platform_pct));
+    setTenant(String(cfg.tenant_pct));
+    setStaff(String(cfg.staff_pct));
+  }, [cfg]);
+
+  const total = Number(platform || 0) + Number(tenant || 0) + Number(staff || 0);
+
+  const handleSave = async () => {
+    if (total !== 100) { Alert.alert('Lỗi', `Tổng phải bằng 100% (hiện tại: ${total}%)`); return; }
+    setSaving(true);
+    try {
+      await workspaceApi.updateCommissionConfig({
+        platform_pct: Number(platform),
+        tenant_pct: Number(tenant),
+        staff_pct: Number(staff),
+      });
+      qc.invalidateQueries({ queryKey: ['commission-config'] });
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Lỗi', e?.message ?? 'Không thể lưu');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View className="flex-1 bg-surface">
+        <View className="flex-row items-center justify-between px-5 pt-14 pb-4 border-b border-outline/20">
+          <Pressable onPress={onClose} className="p-2 -ml-2">
+            <Text className="text-base text-on-surface-variant">Hủy</Text>
+          </Pressable>
+          <Text className="text-base font-bold text-on-surface">Phân chia hoa hồng</Text>
+          <Pressable onPress={handleSave} disabled={saving} className="p-2 -mr-2">
+            {saving ? <ActivityIndicator size="small" color="#1E40AF" /> : <Text className="text-base font-bold text-primary">Lưu</Text>}
+          </Pressable>
+        </View>
+        <ScrollView className="flex-1 px-5 pt-6">
+          <Text className="text-xs text-on-surface-variant mb-4">Tổng phần trăm phải bằng 100%. Áp dụng cho mỗi đơn dịch vụ hoàn thành.</Text>
+          {[
+            { label: 'Platform (%)', value: platform, setter: setPlatform },
+            { label: 'Doanh nghiệp (%)', value: tenant, setter: setTenant },
+            { label: 'Nhân viên (%)', value: staff, setter: setStaff },
+          ].map(({ label, value, setter }) => (
+            <View key={label} className="mb-4">
+              <Text className="text-sm font-semibold text-on-surface-variant mb-2">{label}</Text>
+              <TextInput
+                className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface"
+                value={value}
+                onChangeText={v => setter(v.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          ))}
+          <View className={`px-4 py-3 rounded-xl mt-2 ${total === 100 ? 'bg-success/10' : 'bg-error/10'}`}>
+            <Text className={`text-sm font-bold ${total === 100 ? 'text-success' : 'text-error'}`}>
+              Tổng: {total}% {total === 100 ? '✓' : `(cần ${100 - total > 0 ? '+' : ''}${100 - total}%)`}
+            </Text>
+          </View>
+          <View className="h-20" />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
 }
 
 function PricingFormModal({
@@ -50,11 +144,16 @@ function PricingFormModal({
 }) {
   const [form, setForm] = useState<PricingForm>(EMPTY_FORM);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showPeakHours, setShowPeakHours] = useState(false);
+  const [newSlotStart, setNewSlotStart] = useState('07:00');
+  const [newSlotEnd, setNewSlotEnd] = useState('09:00');
+  const [newSlotMultiplier, setNewSlotMultiplier] = useState('1.5');
 
   useEffect(() => {
     if (!visible) return;
     if (!editing) {
       setForm(EMPTY_FORM);
+      setShowPeakHours(false);
     } else {
       setForm({
         category_id: editing.category_id,
@@ -64,12 +163,27 @@ function PricingFormModal({
         price_min: editing.price_min != null ? String(editing.price_min) : '',
         price_max: editing.price_max != null ? String(editing.price_max) : '',
         estimated_duration_minutes: editing.estimated_duration_minutes != null ? String(editing.estimated_duration_minutes) : '',
+        travel_fee: editing.travel_fee ? String(editing.travel_fee) : '',
+        surcharge_percent: editing.surcharge_percent ? String(editing.surcharge_percent) : '',
+        peak_hours: editing.peak_hours_config ?? [],
       });
+      setShowPeakHours((editing.peak_hours_config ?? []).length > 0);
     }
     setShowCategoryPicker(false);
   }, [editing, visible]);
 
   const selectedCategory = categories.find(c => c.id === form.category_id);
+
+  const addPeakSlot = () => {
+    const m = Number(newSlotMultiplier);
+    if (!newSlotStart || !newSlotEnd || !m) return;
+    setForm(f => ({ ...f, peak_hours: [...f.peak_hours, { start_time: newSlotStart, end_time: newSlotEnd, multiplier: m }] }));
+    setNewSlotStart('07:00'); setNewSlotEnd('09:00'); setNewSlotMultiplier('1.5');
+  };
+
+  const removePeakSlot = (i: number) => {
+    setForm(f => ({ ...f, peak_hours: f.peak_hours.filter((_, idx) => idx !== i) }));
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -182,13 +296,107 @@ function PricingFormModal({
           {/* Duration */}
           <Text className="text-sm font-semibold text-on-surface-variant mb-2">Est. Duration (minutes)</Text>
           <TextInput
-            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-6"
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-4"
             value={form.estimated_duration_minutes}
             onChangeText={v => setForm(f => ({ ...f, estimated_duration_minutes: v.replace(/[^0-9]/g, '') }))}
             placeholder="e.g. 60"
             placeholderTextColor="#9CA3AF"
             keyboardType="numeric"
           />
+
+          {/* Fee structure */}
+          <Text className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3 mt-2">Cấu trúc phí bổ sung</Text>
+          <View className="flex-row gap-3 mb-4">
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-on-surface-variant mb-2">Phí đi lại (₫)</Text>
+              <TextInput
+                className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface"
+                value={form.travel_fee}
+                onChangeText={v => setForm(f => ({ ...f, travel_fee: v.replace(/[^0-9]/g, '') }))}
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="numeric"
+              />
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-on-surface-variant mb-2">Phụ phí (%)</Text>
+              <TextInput
+                className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface"
+                value={form.surcharge_percent}
+                onChangeText={v => setForm(f => ({ ...f, surcharge_percent: v.replace(/[^0-9.]/g, '') }))}
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
+          {/* Peak hours */}
+          <View className="flex-row items-center justify-between mb-3 mt-2">
+            <Text className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Giờ cao điểm</Text>
+            <Pressable
+              onPress={() => setShowPeakHours(v => !v)}
+              className={`px-3 py-1 rounded-lg ${showPeakHours ? 'bg-primary/10' : 'bg-surface-container-high'}`}
+            >
+              <Text className={`text-xs font-semibold ${showPeakHours ? 'text-primary' : 'text-on-surface-variant'}`}>
+                {showPeakHours ? 'Ẩn' : `Thêm${form.peak_hours.length > 0 ? ` (${form.peak_hours.length})` : ''}`}
+              </Text>
+            </Pressable>
+          </View>
+
+          {showPeakHours && (
+            <View className="bg-surface-container-lowest rounded-xl p-4 mb-4 gap-3">
+              {form.peak_hours.map((slot, i) => (
+                <View key={i} className="flex-row items-center justify-between bg-surface-container rounded-xl px-3 py-2">
+                  <Text className="text-xs font-semibold text-on-surface">
+                    {slot.start_time} – {slot.end_time} · x{slot.multiplier}
+                  </Text>
+                  <Pressable onPress={() => removePeakSlot(i)}>
+                    <Text className="text-error text-sm font-bold">✕</Text>
+                  </Pressable>
+                </View>
+              ))}
+              <View className="gap-2">
+                <Text className="text-xs font-semibold text-on-surface-variant">Thêm khung giờ</Text>
+                <View className="flex-row gap-2">
+                  <View className="flex-1">
+                    <Text className="text-[10px] text-on-surface-variant mb-1">Từ</Text>
+                    <TextInput
+                      className="bg-surface-container-highest rounded-xl px-3 py-2 text-on-surface text-xs"
+                      value={newSlotStart}
+                      onChangeText={setNewSlotStart}
+                      placeholder="07:00"
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[10px] text-on-surface-variant mb-1">Đến</Text>
+                    <TextInput
+                      className="bg-surface-container-highest rounded-xl px-3 py-2 text-on-surface text-xs"
+                      value={newSlotEnd}
+                      onChangeText={setNewSlotEnd}
+                      placeholder="09:00"
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[10px] text-on-surface-variant mb-1">Hệ số</Text>
+                    <TextInput
+                      className="bg-surface-container-highest rounded-xl px-3 py-2 text-on-surface text-xs"
+                      value={newSlotMultiplier}
+                      onChangeText={setNewSlotMultiplier}
+                      placeholder="1.5"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+                <Pressable onPress={addPeakSlot} className="py-2 rounded-xl items-center bg-primary/10 active:opacity-70">
+                  <Text className="text-xs font-semibold text-primary">+ Thêm khung giờ</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           <View className="h-8" />
         </ScrollView>
@@ -205,6 +413,7 @@ export default function PricingScreen() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<ServicePricing | null>(null);
   const [filterCategoryId, setFilterCategoryId] = useState<string>('');
+  const [showCommission, setShowCommission] = useState(false);
 
   const { data: pricings, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['pricings', tenantId, filterCategoryId],
@@ -227,6 +436,9 @@ export default function PricingScreen() {
       ...(form.price_type === 'range' && form.price_min ? { price_min: Number(form.price_min) } : {}),
       ...(form.price_type === 'range' && form.price_max ? { price_max: Number(form.price_max) } : {}),
       ...(form.estimated_duration_minutes ? { estimated_duration_minutes: Number(form.estimated_duration_minutes) } : {}),
+      travel_fee: form.travel_fee ? Number(form.travel_fee) : 0,
+      surcharge_percent: form.surcharge_percent ? Number(form.surcharge_percent) : 0,
+      peak_hours_config: form.peak_hours,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['pricings'] }); setShowModal(false); setEditing(null); },
     onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to create pricing'),
@@ -240,6 +452,9 @@ export default function PricingScreen() {
       price_min: form.price_type === 'range' && form.price_min ? Number(form.price_min) : undefined,
       price_max: form.price_type === 'range' && form.price_max ? Number(form.price_max) : undefined,
       estimated_duration_minutes: form.estimated_duration_minutes ? Number(form.estimated_duration_minutes) : undefined,
+      travel_fee: form.travel_fee ? Number(form.travel_fee) : 0,
+      surcharge_percent: form.surcharge_percent ? Number(form.surcharge_percent) : 0,
+      peak_hours_config: form.peak_hours,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['pricings'] }); setShowModal(false); setEditing(null); },
     onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to update pricing'),
@@ -290,18 +505,27 @@ export default function PricingScreen() {
       <View className="glass-effect px-5 pt-14 pb-3">
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-2xl font-extrabold text-on-surface tracking-tight">Pricing</Text>
-          <Pressable
-            onPress={() => { setEditing(null); setShowModal(true); }}
-            className="bg-primary rounded-xl px-4 py-2"
-          >
-            <Text className="text-sm font-bold text-white">+ Add</Text>
-          </Pressable>
+          <View className="flex-row gap-2">
+            <Pressable
+              onPress={() => setShowCommission(true)}
+              className="bg-surface-container-high rounded-xl px-3 py-2"
+            >
+              <Text className="text-xs font-semibold text-on-surface-variant">💰 Hoa hồng</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { setEditing(null); setShowModal(true); }}
+              className="bg-primary rounded-xl px-4 py-2"
+            >
+              <Text className="text-sm font-bold text-white">+ Add</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Category filter */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 4 }}>
           <Pressable
             onPress={() => setFilterCategoryId('')}
+            style={{ marginRight: 8 }}
             className={`px-4 py-2 rounded-full ${!filterCategoryId ? 'bg-primary' : 'bg-surface-container-high'}`}
           >
             <Text className={`text-sm font-semibold ${!filterCategoryId ? 'text-white' : 'text-on-surface-variant'}`}>
@@ -312,6 +536,7 @@ export default function PricingScreen() {
             <Pressable
               key={cat.id}
               onPress={() => setFilterCategoryId(cat.id === filterCategoryId ? '' : cat.id)}
+              style={{ marginRight: 8 }}
               className={`px-4 py-2 rounded-full ${filterCategoryId === cat.id ? 'bg-primary' : 'bg-surface-container-high'}`}
             >
               <Text className={`text-sm font-semibold ${filterCategoryId === cat.id ? 'text-white' : 'text-on-surface-variant'}`}>
@@ -344,35 +569,46 @@ export default function PricingScreen() {
                 </Text>
               </View>
               {group.items.map(item => (
-                <View key={item.id} className="bg-surface-container-lowest rounded-xl p-4 mb-2 flex-row items-center">
-                  <View className="flex-1 gap-1">
-                    <Text className="text-sm font-semibold text-on-surface">{item.service_name}</Text>
-                    <Text className="text-xs font-bold text-primary">
-                      {item.price_fixed != null
-                        ? formatPrice(item.price_fixed)
-                        : item.price_min != null || item.price_max != null
-                          ? `${formatPrice(item.price_min)} – ${formatPrice(item.price_max)}`
-                          : 'Price TBD'}
-                    </Text>
-                    {item.estimated_duration_minutes != null && (
-                      <Text className="text-xs text-on-surface-variant">
-                        ⏱ {item.estimated_duration_minutes} min
+                <View key={item.id} className="bg-surface-container-lowest rounded-xl p-4 mb-2">
+                  <View className="flex-row items-start">
+                    <View className="flex-1 gap-1">
+                      <Text className="text-sm font-semibold text-on-surface">{item.service_name}</Text>
+                      <Text className="text-xs font-bold text-primary">
+                        {item.price_fixed != null
+                          ? formatPrice(item.price_fixed)
+                          : item.price_min != null || item.price_max != null
+                            ? `${formatPrice(item.price_min)} – ${formatPrice(item.price_max)}`
+                            : 'Price TBD'}
                       </Text>
-                    )}
-                  </View>
-                  <View className="flex-row gap-2">
-                    <Pressable
-                      onPress={() => { setEditing(item); setShowModal(true); }}
-                      className="bg-surface-container-high rounded-lg px-3 py-1.5"
-                    >
-                      <Text className="text-xs font-semibold text-on-surface">Edit</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handleDelete(item)}
-                      className="bg-error/10 rounded-lg px-3 py-1.5"
-                    >
-                      <Text className="text-xs font-semibold text-error">Del</Text>
-                    </Pressable>
+                      <View className="flex-row flex-wrap gap-2 mt-1">
+                        {item.estimated_duration_minutes != null && (
+                          <Text className="text-xs text-on-surface-variant">⏱ {item.estimated_duration_minutes}p</Text>
+                        )}
+                        {(item.travel_fee ?? 0) > 0 && (
+                          <Text className="text-xs text-on-surface-variant">🚗 +{formatPrice(item.travel_fee)}</Text>
+                        )}
+                        {(item.surcharge_percent ?? 0) > 0 && (
+                          <Text className="text-xs text-on-surface-variant">+{item.surcharge_percent}%</Text>
+                        )}
+                        {(item.peak_hours_config ?? []).length > 0 && (
+                          <Text className="text-xs text-on-surface-variant">⚡ {item.peak_hours_config.length} giờ cao điểm</Text>
+                        )}
+                      </View>
+                    </View>
+                    <View className="flex-row gap-2">
+                      <Pressable
+                        onPress={() => { setEditing(item); setShowModal(true); }}
+                        className="bg-surface-container-high rounded-lg px-3 py-1.5"
+                      >
+                        <Text className="text-xs font-semibold text-on-surface">Edit</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleDelete(item)}
+                        className="bg-error/10 rounded-lg px-3 py-1.5"
+                      >
+                        <Text className="text-xs font-semibold text-error">Del</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
               ))}
@@ -389,6 +625,11 @@ export default function PricingScreen() {
         onClose={() => { setShowModal(false); setEditing(null); }}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
+      />
+
+      <CommissionModal
+        visible={showCommission}
+        onClose={() => setShowCommission(false)}
       />
     </View>
   );

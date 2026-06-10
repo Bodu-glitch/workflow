@@ -24,6 +24,26 @@ interface CurrentUserType {
 export class WorkspaceController {
   constructor(private readonly workspaceService: WorkspaceService) {}
 
+  /** GET /workspace/commission — BO + OT: đọc cấu hình hoa hồng */
+  @Get('commission')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner', 'operator')
+  getCommissionConfig(@CurrentUser() user: CurrentUserType) {
+    return this.workspaceService.getCommissionConfig(user.tenant_id);
+  }
+
+  /** PATCH /workspace/commission — BO only: cập nhật cấu hình hoa hồng */
+  @Patch('commission')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner')
+  updateCommissionConfig(
+    @CurrentUser() user: CurrentUserType,
+    @Body() body: { platform_pct: number; tenant_pct: number; staff_pct: number },
+  ) {
+    return this.workspaceService.updateCommissionConfig(user.tenant_id, body);
+  }
+
+
   /** GET /workspace/profile — BO + OT: read workspace info */
   @Get('profile')
   @UseGuards(RolesGuard)

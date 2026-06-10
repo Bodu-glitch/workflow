@@ -93,4 +93,13 @@ export const vouchersApi = {
       method: 'POST',
       body: JSON.stringify({ code, tenant_id: tenantId, order_amount: orderAmount }),
     }),
+
+  getStats: (id: string) =>
+    apiFetch<{ voucher_id: string; code: string; name: string; used_count: number; total_discount_given: number }>(`/vouchers/${id}/stats`),
+
+  notify: (id: string, message?: string) =>
+    apiFetch<{ sent: number }>(`/vouchers/${id}/notify`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
 };

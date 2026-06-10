@@ -243,6 +243,8 @@ export interface WorkspaceProfile {
   income_level?: string;
   policies?: string;
   status: 'active' | 'inactive' | 'suspended' | 'pending';
+  lat?: number | null;
+  lng?: number | null;
   created_at: string;
 }
 
@@ -254,6 +256,8 @@ export interface UpdateWorkspaceInput {
   benefits?: string;
   income_level?: string;
   policies?: string;
+  lat?: number;
+  lng?: number;
 }
 
 // ─── Workspace Stats ──────────────────────────────────────────────────────────

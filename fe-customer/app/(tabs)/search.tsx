@@ -1,240 +1,334 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, FlatList,
-  TouchableOpacity, ActivityIndicator, Image, ScrollView,
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  FlatList, ActivityIndicator, Image, ScrollView as RNScrollView,
+  Platform,
 } from 'react-native';
-import { router } from 'expo-router';
+import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import { api } from '../../lib/api';
-import { COLORS, CATEGORY_ICONS } from '../../constants/config';
+import type { Workspace } from '../../lib/api';
+import { COLORS } from '../../constants/config';
 
-interface Tenant {
-  id: string;
-  name: string;
-  slug: string;
-  logo_url?: string;
-  description?: string;
-  industry?: string;
-  operating_area?: string;
-  categories?: Array<{ id: string; name: string; slug: string }>;
-  rating?: { avg: number | null; count: number };
+const CATEGORIES = [
+  { slug: 'dien', label: '⚡ Điện' },
+  { slug: 'nuoc', label: '🚿 Nước' },
+  { slug: 'dieu-hoa', label: '❄️ Điều hòa' },
+  { slug: 'may-giat', label: '🔄 Máy giặt' },
+  { slug: 'sua-chua', label: '🔧 Sửa chữa' },
+  { slug: 'bao-duong', label: '🛠 Bảo dưỡng' },
+];
+
+const RATING_OPTIONS = [
+  { label: '⭐ 4.5+', value: 4.5 },
+  { label: '⭐ 4+', value: 4 },
+  { label: '⭐ 3+', value: 3 },
+];
+
+function formatDistance(m?: number) {
+  if (m == null || m === Infinity) return null;
+  if (m < 1000) return `${Math.round(m)}m`;
+  return `${(m / 1000).toFixed(1)}km`;
 }
 
-interface Category {
-  id: string;
-  name: string;
-  slug: string;
+function StarRating({ avg, count }: { avg: number | null; count: number }) {
+  if (!avg) return null;
+  return (
+    <View style={styles.ratingRow}>
+      <Text style={styles.ratingText}>⭐ {avg.toFixed(1)}</Text>
+      <Text style={styles.ratingCount}>({count})</Text>
+    </View>
+  );
+}
+
+function WorkspaceCard({ workspace, onPress }: { workspace: Workspace; onPress: () => void }) {
+  const initials = workspace.name.charAt(0).toUpperCase();
+  const dist = formatDistance(workspace.distance_m);
+  return (
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+      <View style={styles.cardLeft}>
+        {workspace.logo_url ? (
+          <Image source={{ uri: workspace.logo_url }} style={styles.logo} />
+        ) : (
+          <View style={styles.logoPlaceholder}>
+            <Text style={styles.logoText}>{initials}</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.cardBody}>
+        <View style={styles.cardNameRow}>
+          <Text style={styles.cardName} numberOfLines={1}>{workspace.name}</Text>
+          <Text style={styles.verified}>✓</Text>
+        </View>
+        {workspace.industry && (
+          <Text style={styles.cardIndustry} numberOfLines={1}>🔧 {workspace.industry}</Text>
+        )}
+        <View style={styles.cardMeta}>
+          {workspace.operating_area && (
+            <Text style={styles.cardArea} numberOfLines={1}>📍 {workspace.operating_area}</Text>
+          )}
+          {dist && <Text style={styles.distanceText}>📐 {dist}</Text>}
+        </View>
+        <StarRating avg={workspace.rating_avg} count={workspace.rating_count} />
+        {workspace.description && (
+          <Text style={styles.cardDesc} numberOfLines={1}>{workspace.description}</Text>
+        )}
+      </View>
+      <Text style={styles.cardArrow}>›</Text>
+    </TouchableOpacity>
+  );
 }
 
 export default function SearchScreen() {
-  const [query, setQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const router = useRouter();
+  const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [minRating, setMinRating] = useState<number | null>(null);
+  const [nearMe, setNearMe] = useState(false);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
 
-  useEffect(() => {
-    // Load categories for filter
-    api.get<Category[]>('/categories').then(setCategories).catch(console.warn);
-    // Load initial list
-    fetchTenants('');
-  }, []);
+  const getGps = useCallback(async () => {
+    if (userCoords) return userCoords;
+    setGpsLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return null;
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      setUserCoords(coords);
+      return coords;
+    } catch {
+      return null;
+    } finally {
+      setGpsLoading(false);
+    }
+  }, [userCoords]);
 
-  const fetchTenants = useCallback(async (q: string, categoryId?: string) => {
+  const toggleNearMe = async () => {
+    if (nearMe) {
+      setNearMe(false);
+      return;
+    }
+    const coords = await getGps();
+    if (coords) setNearMe(true);
+  };
+
+  const fetchWorkspaces = useCallback(async (
+    q: string,
+    cat: string | null,
+    rating: number | null,
+    near: boolean,
+    coords: { lat: number; lng: number } | null,
+    p: number,
+    reset = false,
+  ) => {
     setLoading(true);
     try {
-      let path = `/customer/workspaces/search?limit=30`;
-      if (q.trim()) path += `&q=${encodeURIComponent(q.trim())}`;
-      if (categoryId) path += `&category_id=${categoryId}`;
-      const result = await api.get<{ data: Tenant[] }>(path);
-      setTenants((result as any).data ?? result);
-      setSearched(true);
-    } catch (e) {
-      console.warn('Search error:', e);
+      const res = await api.listWorkspaces({
+        search: q || undefined,
+        category: cat || undefined,
+        min_rating: rating ?? undefined,
+        lat: (near && coords) ? coords.lat : undefined,
+        lng: (near && coords) ? coords.lng : undefined,
+        sort_by: near ? 'distance' : (rating ? 'rating' : 'name'),
+        page: p,
+      });
+      const items = res.data ?? [];
+      setWorkspaces(reset ? items : (prev) => [...prev, ...items]);
+      setTotal(res.meta?.total ?? items.length);
+      setHasMore(items.length === 20);
+    } catch {
+      // silent
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const handleSearch = () => {
-    fetchTenants(query, selectedCategory);
-  };
+  useEffect(() => {
+    setPage(1);
+    fetchWorkspaces(search, activeCategory, minRating, nearMe, userCoords, 1, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, activeCategory, minRating, nearMe]);
 
-  const handleCategoryFilter = (catId: string | undefined) => {
-    setSelectedCategory(catId);
-    fetchTenants(query, catId);
-  };
+  const loadMore = useCallback(() => {
+    if (loading || !hasMore) return;
+    const next = page + 1;
+    setPage(next);
+    fetchWorkspaces(search, activeCategory, minRating, nearMe, userCoords, next, false);
+  }, [loading, hasMore, page, search, activeCategory, minRating, nearMe, userCoords, fetchWorkspaces]);
 
   return (
     <View style={styles.container}>
       {/* Search bar */}
-      <View style={styles.searchContainer}>
+      <View style={styles.searchBar}>
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={handleSearch}
-          placeholder="Tìm kiếm dịch vụ, công ty..."
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Tìm theo tên công ty, dịch vụ..."
           placeholderTextColor={COLORS.textSecondary}
           returnKeyType="search"
         />
-        {query.length > 0 && (
-          <TouchableOpacity onPress={() => { setQuery(''); fetchTenants('', selectedCategory); }}>
-            <Text style={styles.clearBtn}>✕</Text>
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Text style={{ color: COLORS.textSecondary, fontSize: 16, paddingHorizontal: 8 }}>✕</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Category filters */}
-      <ScrollView
+      {/* Category filter */}
+      <RNScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterContainer}
+        contentContainerStyle={styles.filterRow}
       >
         <TouchableOpacity
-          style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
-          onPress={() => handleCategoryFilter(undefined)}
+          style={[styles.catChip, !activeCategory && styles.catChipActive]}
+          onPress={() => setActiveCategory(null)}
         >
-          <Text style={[styles.filterChipText, !selectedCategory && styles.filterChipTextActive]}>
-            Tất cả
-          </Text>
+          <Text style={[styles.catText, !activeCategory && styles.catTextActive]}>Tất cả</Text>
         </TouchableOpacity>
-        {categories.map(cat => (
+        {CATEGORIES.map((cat) => (
           <TouchableOpacity
-            key={cat.id}
-            style={[styles.filterChip, selectedCategory === cat.id && styles.filterChipActive]}
-            onPress={() => handleCategoryFilter(cat.id)}
+            key={cat.slug}
+            style={[styles.catChip, activeCategory === cat.slug && styles.catChipActive]}
+            onPress={() => setActiveCategory(cat.slug === activeCategory ? null : cat.slug)}
           >
-            <Text style={styles.filterChipIcon}>{CATEGORY_ICONS[cat.slug] ?? '🔧'}</Text>
-            <Text style={[styles.filterChipText, selectedCategory === cat.id && styles.filterChipTextActive]}>
-              {cat.name}
+            <Text style={[styles.catText, activeCategory === cat.slug && styles.catTextActive]}>
+              {cat.label}
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </RNScrollView>
 
-      {/* Results */}
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
-      ) : (
-        <FlatList
-          data={tenants}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            searched ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyIcon}>🔍</Text>
-                <Text style={styles.emptyTitle}>Không tìm thấy kết quả</Text>
-                <Text style={styles.emptyText}>Thử từ khóa khác hoặc bỏ bộ lọc</Text>
-              </View>
-            ) : null
+      {/* Rating + GPS filters */}
+      <RNScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {/* GPS Near Me chip */}
+        <TouchableOpacity
+          style={[styles.filterChip, nearMe && styles.filterChipActive]}
+          onPress={toggleNearMe}
+          disabled={gpsLoading}
+        >
+          {gpsLoading
+            ? <ActivityIndicator size="small" color={nearMe ? '#fff' : COLORS.primary} style={{ marginRight: 4 }} />
+            : null
           }
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.tenantCard}
-              onPress={() => router.push({ pathname: '/company/[id]', params: { id: item.id } })}
-              activeOpacity={0.8}
-            >
-              <View style={styles.tenantHeader}>
-                {item.logo_url ? (
-                  <Image source={{ uri: item.logo_url }} style={styles.tenantLogo} />
-                ) : (
-                  <View style={styles.tenantLogoFallback}>
-                    <Text style={styles.tenantLogoText}>{item.name.charAt(0)}</Text>
-                  </View>
-                )}
-                <View style={styles.tenantInfo}>
-                  <Text style={styles.tenantName} numberOfLines={1}>{item.name}</Text>
-                  {item.industry && (
-                    <Text style={styles.tenantIndustry}>{item.industry}</Text>
-                  )}
-                  {item.operating_area && (
-                    <Text style={styles.tenantArea}>📍 {item.operating_area}</Text>
-                  )}
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </View>
+          <Text style={[styles.filterChipText, nearMe && styles.filterChipTextActive]}>
+            📍 Gần tôi
+          </Text>
+        </TouchableOpacity>
 
-              {/* Categories */}
-              {item.categories && item.categories.length > 0 && (
-                <View style={styles.categoryTags}>
-                  {item.categories.slice(0, 3).map(cat => (
-                    <View key={cat.id} style={styles.categoryTag}>
-                      <Text style={styles.categoryTagText}>
-                        {CATEGORY_ICONS[cat.slug] ?? '🔧'} {cat.name}
-                      </Text>
-                    </View>
-                  ))}
-                  {item.categories.length > 3 && (
-                    <View style={styles.categoryTag}>
-                      <Text style={styles.categoryTagText}>+{item.categories.length - 3}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
-        />
+        {/* Rating chips */}
+        {RATING_OPTIONS.map((opt) => (
+          <TouchableOpacity
+            key={opt.value}
+            style={[styles.filterChip, minRating === opt.value && styles.filterChipActive]}
+            onPress={() => setMinRating(minRating === opt.value ? null : opt.value)}
+          >
+            <Text style={[styles.filterChipText, minRating === opt.value && styles.filterChipTextActive]}>
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </RNScrollView>
+
+      {/* Result count */}
+      {!loading && total > 0 && (
+        <Text style={styles.resultCount}>
+          {total} doanh nghiệp{nearMe ? ' gần bạn' : ''}
+          {minRating ? ` · ${minRating}⭐+` : ''}
+        </Text>
       )}
+
+      {/* List */}
+      <FlatList
+        data={workspaces}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <WorkspaceCard
+            workspace={item}
+            onPress={() => router.push({ pathname: '/workspace/[slug]', params: { slug: item.slug } } as any)}
+          />
+        )}
+        contentContainerStyle={styles.list}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListEmptyComponent={
+          loading ? null : (
+            <View style={styles.empty}>
+              <Text style={{ fontSize: 40 }}>🔍</Text>
+              <Text style={styles.emptyText}>Không tìm thấy doanh nghiệp nào</Text>
+              <Text style={styles.emptySubtext}>Thử tìm kiếm với từ khóa khác</Text>
+            </View>
+          )
+        }
+        ListFooterComponent={loading ? <ActivityIndicator color={COLORS.primary} style={{ margin: 16 }} /> : null}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  searchContainer: {
+  searchBar: {
     flexDirection: 'row', alignItems: 'center',
     margin: 16, marginBottom: 8,
-    backgroundColor: COLORS.surface,
-    borderRadius: 14, paddingHorizontal: 14,
+    paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: COLORS.surface, borderRadius: 14,
     borderWidth: 1, borderColor: COLORS.border,
-    gap: 8,
   },
-  searchIcon: { fontSize: 18 },
-  searchInput: { flex: 1, fontSize: 15, color: COLORS.text, paddingVertical: 12 },
-  clearBtn: { fontSize: 16, color: COLORS.textSecondary, padding: 4 },
-  filterContainer: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
+  searchIcon: { fontSize: 16, marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: COLORS.text },
+  filterRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 16, paddingRight: 4, paddingTop: 6, paddingBottom: 6 },
+  catChip: { alignSelf: 'flex-start', flexShrink: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.border, marginRight: 8 },
+  catChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  catText: { fontSize: 12, fontWeight: '600', color: COLORS.text },
+  catTextActive: { color: '#fff' },
   filterChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: 20, borderWidth: 1.5, borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    alignSelf: 'flex-start', flexShrink: 0, flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.border, marginRight: 8,
   },
-  filterChipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '15' },
-  filterChipIcon: { fontSize: 14 },
-  filterChipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '500' },
-  filterChipTextActive: { color: COLORS.primary, fontWeight: '700' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { padding: 16, gap: 12 },
-  empty: { alignItems: 'center', paddingTop: 80, gap: 12 },
-  emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  emptyText: { fontSize: 14, color: COLORS.textSecondary },
-  tenantCard: {
-    backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, gap: 12,
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+  filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: COLORS.text },
+  filterChipTextActive: { color: '#fff' },
+  resultCount: { fontSize: 12, color: COLORS.textSecondary, paddingHorizontal: 16, marginBottom: 4 },
+  list: { padding: 16, gap: 12, paddingTop: 0 },
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.surface, borderRadius: 16, padding: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
-  tenantHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  tenantLogo: { width: 52, height: 52, borderRadius: 12 },
-  tenantLogoFallback: {
-    width: 52, height: 52, borderRadius: 12,
-    backgroundColor: COLORS.primary + '20',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  tenantLogoText: { fontSize: 22, fontWeight: '700', color: COLORS.primary },
-  tenantInfo: { flex: 1, gap: 2 },
-  tenantName: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  tenantIndustry: { fontSize: 13, color: COLORS.textSecondary },
-  tenantArea: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-  chevron: { fontSize: 22, color: COLORS.textSecondary },
-  categoryTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  categoryTag: {
-    backgroundColor: COLORS.background, borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  categoryTagText: { fontSize: 12, color: COLORS.textSecondary },
+  cardLeft: {},
+  logo: { width: 52, height: 52, borderRadius: 12 },
+  logoPlaceholder: { width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
+  logoText: { fontSize: 22, fontWeight: '700', color: '#fff' },
+  cardBody: { flex: 1, gap: 3 },
+  cardNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cardName: { fontSize: 15, fontWeight: '700', color: COLORS.primary, flex: 1 },
+  verified: { fontSize: 13, color: '#3B82F6', fontWeight: '700' },
+  cardIndustry: { fontSize: 12, color: COLORS.textSecondary },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  cardArea: { fontSize: 12, color: COLORS.textSecondary, flex: 1 },
+  distanceText: { fontSize: 12, color: COLORS.primary, fontWeight: '600' },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratingText: { fontSize: 12, fontWeight: '700', color: '#f59e0b' },
+  ratingCount: { fontSize: 11, color: COLORS.textSecondary },
+  cardDesc: { fontSize: 12, color: COLORS.text, marginTop: 2 },
+  cardArrow: { fontSize: 20, color: COLORS.textSecondary },
+  empty: { alignItems: 'center', gap: 8, paddingTop: 60 },
+  emptyText: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  emptySubtext: { fontSize: 13, color: COLORS.textSecondary },
 });
