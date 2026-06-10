@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { RatingsService } from './ratings.service.js';
 import { CreateRatingDto } from './dto/create-rating.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
@@ -23,6 +24,15 @@ export class RatingsController {
     @CurrentUser() user: CurrentUserType,
   ) {
     return this.service.createRating(requestId, dto, user);
+  }
+
+  @Post('requests/:requestId/upload-review-photo')
+  @UseInterceptors(FileInterceptor('photo'))
+  uploadReviewPhoto(
+    @Param('requestId') requestId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.service.uploadReviewPhoto(requestId, file);
   }
 
   @Get('staff/:staffId/ratings')

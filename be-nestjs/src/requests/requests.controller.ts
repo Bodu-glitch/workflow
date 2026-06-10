@@ -151,6 +151,18 @@ export class RequestsController {
     return this.service.pushToStaffPool(id, user);
   }
 
+  /** BO/OT: manually override bill (agreed_price) for a request */
+  @Patch(':id/override-bill')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner', 'operator')
+  overrideBill(
+    @Param('id') id: string,
+    @Body() dto: { agreed_price: number; override_note?: string },
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.service.overrideBill(id, dto, user);
+  }
+
   /** Operator directly assigns a specific staff member */
   @Post(':id/assign')
   @UseGuards(RolesGuard)

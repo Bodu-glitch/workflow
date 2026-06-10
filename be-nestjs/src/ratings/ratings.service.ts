@@ -57,6 +57,8 @@ export class RatingsService {
         staff_id: request.assigned_staff_id,
         score: dto.score,
         comment: dto.comment,
+        photo_url: dto.photo_url,
+        report_reason: dto.report_reason,
       })
       .select()
       .single();
@@ -71,6 +73,17 @@ export class RatingsService {
     });
 
     return data;
+  }
+
+  async uploadReviewPhoto(requestId: string, file: Express.Multer.File) {
+    const ext = file.originalname.split('.').pop() ?? 'jpg';
+    const path = `${requestId}/${Date.now()}.${ext}`;
+    const { error } = await this.supabase.db.storage
+      .from('review-photos')
+      .upload(path, file.buffer, { contentType: file.mimetype, upsert: false });
+    if (error) throw new Error(error.message);
+    const { data: { publicUrl } } = this.supabase.db.storage.from('review-photos').getPublicUrl(path);
+    return { url: publicUrl };
   }
 
   async getStaffRatings(staffId: string, pagination: PaginationDto) {

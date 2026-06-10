@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { Alert, ActivityIndicator, RefreshControl, Platform, TextInput } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, ScrollView } from '@/tw';
@@ -44,6 +44,9 @@ export default function BORequestDetailScreen() {
   const qc = useQueryClient();
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [showStaffList, setShowStaffList] = useState(false);
+  const [showOverrideBill, setShowOverrideBill] = useState(false);
+  const [overridePrice, setOverridePrice] = useState('');
+  const [overrideNote, setOverrideNote] = useState('');
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['service-request', id],
@@ -81,6 +84,17 @@ export default function BORequestDetailScreen() {
     onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
   });
 
+  const overrideBillMutation = useMutation({
+    mutationFn: () => requestsApi.overrideBill(id, Number(overridePrice), overrideNote.trim() || undefined),
+    onSuccess: () => {
+      invalidate();
+      setShowOverrideBill(false);
+      setOverridePrice('');
+      setOverrideNote('');
+    },
+    onError: (e) => Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed'),
+  });
+
   const createTaskMutation = useMutation({
     mutationFn: () => requestsApi.createTask(id),
     onSuccess: (res: any) => {
@@ -113,8 +127,15 @@ export default function BORequestDetailScreen() {
             <Text className="text-primary font-semibold">← Back</Text>
           </Pressable>
           <Text className="text-lg font-extrabold text-on-surface flex-1" numberOfLines={1}>Request Details</Text>
-          <View className="bg-primary/10 px-3 py-1 rounded-full">
-            <Text className="text-xs font-bold text-primary">{statusLabel}</Text>
+          <View className="flex-row items-center gap-2">
+            {Platform.OS === 'web' && (
+              <Pressable onPress={() => (window as any).print()} className="bg-surface-container-high rounded-lg px-3 py-1.5 active:opacity-70">
+                <Text className="text-xs font-semibold text-on-surface">🖨 PDF</Text>
+              </Pressable>
+            )}
+            <View className="bg-primary/10 px-3 py-1 rounded-full">
+              <Text className="text-xs font-bold text-primary">{statusLabel}</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -148,12 +169,57 @@ export default function BORequestDetailScreen() {
         )}
 
         <Section title="Financials">
-          <InfoRow label="Agreed Price" value={req.agreed_price != null ? `${req.agreed_price.toLocaleString('en-US')}₫` : undefined} />
+          <InfoRow label="Agreed Price" value={req.agreed_price != null ? `${req.agreed_price.toLocaleString('vi-VN')}₫` : undefined} />
           {req.collected_amount != null && (
-            <View className="bg-success/10 rounded-xl px-3 py-2">
+            <View className="bg-success/10 rounded-xl px-3 py-2 mb-3">
               <Text className="text-sm font-bold text-success">
-                💰 Collected: {req.collected_amount.toLocaleString('en-US')}₫
+                💰 Collected: {req.collected_amount.toLocaleString('vi-VN')}₫
               </Text>
+            </View>
+          )}
+          {/* Override bill */}
+          <Pressable
+            onPress={() => {
+              setOverridePrice(req.agreed_price != null ? String(req.agreed_price) : '');
+              setShowOverrideBill(v => !v);
+            }}
+            className="py-2 rounded-xl items-center bg-surface-container-high active:opacity-70"
+          >
+            <Text className="text-xs font-semibold text-on-surface-variant">✏️ Override Giá</Text>
+          </Pressable>
+          {showOverrideBill && (
+            <View className="mt-3 gap-2">
+              <Text className="text-xs font-semibold text-on-surface-variant">Giá mới (₫)</Text>
+              <TextInput
+                value={overridePrice}
+                onChangeText={v => setOverridePrice(v.replace(/[^0-9]/g, ''))}
+                placeholder="Nhập giá mới..."
+                keyboardType="numeric"
+                className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface text-sm"
+              />
+              <Text className="text-xs font-semibold text-on-surface-variant">Lý do / Ghi chú</Text>
+              <TextInput
+                value={overrideNote}
+                onChangeText={setOverrideNote}
+                placeholder="VD: Phát sinh thêm vật tư..."
+                multiline
+                numberOfLines={2}
+                className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface text-sm"
+                style={{ textAlignVertical: 'top', minHeight: 60 }}
+              />
+              <Pressable
+                onPress={() => {
+                  if (!overridePrice) return Alert.alert('Lỗi', 'Nhập giá mới trước');
+                  overrideBillMutation.mutate();
+                }}
+                disabled={overrideBillMutation.isPending}
+                className="py-3 rounded-xl items-center bg-primary active:opacity-70 disabled:opacity-50"
+              >
+                {overrideBillMutation.isPending
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text className="text-sm font-bold text-white">Xác nhận override</Text>
+                }
+              </Pressable>
             </View>
           )}
         </Section>

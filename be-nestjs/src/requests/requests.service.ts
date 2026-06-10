@@ -728,6 +728,35 @@ export class RequestsService {
     return { task_id: task.id, message: 'Task created and added to pool' };
   }
 
+  async overrideBill(requestId: string, dto: { agreed_price: number; override_note?: string }, user: CurrentUser) {
+    const { data: req } = await this.supabase.db
+      .from('service_requests')
+      .select('id, tenant_id, status')
+      .eq('id', requestId)
+      .single();
+
+    if (!req) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Request not found' });
+    if (req.tenant_id !== user.tenant_id) throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Access denied' });
+
+    const { data, error } = await this.supabase.db
+      .from('service_requests')
+      .update({ agreed_price: dto.agreed_price, updated_at: new Date().toISOString() })
+      .eq('id', requestId)
+      .select('id, agreed_price, status')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    await this.supabase.db.from('audit_logs').insert({
+      request_id: requestId,
+      user_id: user.id,
+      action: 'bill_overridden',
+      metadata: { agreed_price: dto.agreed_price, note: dto.override_note ?? null },
+    }).catch(() => {});
+
+    return data;
+  }
+
   private enforceAccess(request: any, user: CurrentUser) {
     if (user.role === 'superadmin') return;
     if (user.role === 'customer' && request.customer_id !== user.id) {

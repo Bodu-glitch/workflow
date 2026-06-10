@@ -125,17 +125,7 @@ export default function ProfileScreen() {
     } finally { setSaving(false); }
   };
 
-  const handleLogout = () => {
-    if (Platform.OS === 'web') {
-      // eslint-disable-next-line no-alert
-      if (window.confirm('Bạn có chắc muốn đăng xuất?')) logout();
-      return;
-    }
-    Alert.alert('Đăng xuất', 'Bạn muốn đăng xuất?', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Đăng xuất', style: 'destructive', onPress: logout },
-    ]);
-  };
+  const handleLogout = () => logout();
 
   const initials = user?.full_name
     ? user.full_name.trim().split(/\s+/).slice(-2).map((w) => w[0]?.toUpperCase()).join('')

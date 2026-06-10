@@ -204,7 +204,7 @@ export class AuthService {
   async getProfile(userId: string, tenantId: string | null) {
     const { data: user, error } = await this.supabase.db
       .from('users')
-      .select('id, email, full_name, role, phone, address, avatar_url, last_login_at, created_at, is_active')
+      .select('id, email, full_name, role, phone, address, addresses, avatar_url, last_login_at, created_at, is_active')
       .eq('id', userId)
       .single();
 

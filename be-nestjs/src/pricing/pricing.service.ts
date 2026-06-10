@@ -43,6 +43,9 @@ export class PricingService {
         price_max: dto.price_max,
         price_fixed: dto.price_fixed,
         estimated_duration_minutes: dto.estimated_duration_minutes,
+        travel_fee: dto.travel_fee ?? 0,
+        surcharge_percent: dto.surcharge_percent ?? 0,
+        peak_hours_config: dto.peak_hours_config ?? [],
       })
       .select()
       .single();

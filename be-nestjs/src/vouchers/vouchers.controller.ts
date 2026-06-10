@@ -38,4 +38,18 @@ export class VouchersController {
   remove(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
     return this.service.remove(id, user);
   }
+
+  @Get(':id/stats')
+  getStats(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
+    return this.service.getStats(id, user);
+  }
+
+  @Post(':id/notify')
+  notifyCustomers(
+    @Param('id') id: string,
+    @Body() body: { message?: string },
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.service.notifyCustomers(id, body.message, user);
+  }
 }

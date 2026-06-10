@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsInt, IsBoolean, MinLength, Min } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsInt, IsArray, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePricingDto {
@@ -6,7 +6,6 @@ export class CreatePricingDto {
   category_id: string;
 
   @IsString()
-  @MinLength(3)
   service_name: string;
 
   @IsOptional()
@@ -32,4 +31,20 @@ export class CreatePricingDto {
   @Type(() => Number)
   @Min(1)
   estimated_duration_minutes?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(0)
+  travel_fee?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @Min(0)
+  surcharge_percent?: number;
+
+  @IsOptional()
+  @IsArray()
+  peak_hours_config?: Array<{ start_time: string; end_time: string; multiplier: number }>;
 }

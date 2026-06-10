@@ -11,4 +11,12 @@ export class CreateRatingDto {
   @IsOptional()
   @IsString()
   comment?: string;
+
+  @IsOptional()
+  @IsString()
+  photo_url?: string;
+
+  @IsOptional()
+  @IsString()
+  report_reason?: string;
 }

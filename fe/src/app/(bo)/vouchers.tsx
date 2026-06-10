@@ -7,6 +7,103 @@ import { vouchersApi, Voucher, CreateVoucherInput } from '@/lib/api/vouchers';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 
+function VoucherStatsRow({ voucherId }: { voucherId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['voucher-stats', voucherId],
+    queryFn: () => vouchersApi.getStats(voucherId),
+    enabled: expanded,
+  });
+  return (
+    <View>
+      <Pressable onPress={() => setExpanded(v => !v)} className="py-1.5 flex-row items-center gap-1">
+        <Text className="text-xs text-primary font-semibold">{expanded ? '▲' : '▼'} Thống kê</Text>
+      </Pressable>
+      {expanded && (
+        <View className="bg-surface-container rounded-xl px-3 py-3 mt-1 gap-2">
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#1E40AF" />
+          ) : isError ? (
+            <Text className="text-xs text-error">Không tải được thống kê</Text>
+          ) : data ? (
+            <View className="flex-row gap-6">
+              <View>
+                <Text className="text-[10px] text-on-surface-variant">Đã dùng</Text>
+                <Text className="text-sm font-bold text-on-surface">{data.used_count} lần</Text>
+              </View>
+              <View>
+                <Text className="text-[10px] text-on-surface-variant">Tổng giảm giá</Text>
+                <Text className="text-sm font-bold text-primary">{(data.total_discount_given ?? 0).toLocaleString('vi-VN')}₫</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function NotifyModal({
+  visible,
+  voucherId,
+  voucherCode,
+  onClose,
+}: {
+  visible: boolean;
+  voucherId: string;
+  voucherCode: string;
+  onClose: () => void;
+}) {
+  const [message, setMessage] = useState('');
+  const notifyMutation = useMutation({
+    mutationFn: () => vouchersApi.notify(voucherId, message.trim() || undefined),
+    onSuccess: (res) => {
+      Alert.alert('Đã gửi', `Thông báo đã được gửi đến ${res.sent} khách hàng.`);
+      onClose();
+      setMessage('');
+    },
+    onError: (e: any) => Alert.alert('Lỗi', e?.message ?? 'Không thể gửi thông báo'),
+  });
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View className="flex-1 bg-surface">
+        <View className="flex-row items-center justify-between px-5 pt-14 pb-4 border-b border-outline/20">
+          <Pressable onPress={onClose} className="p-2 -ml-2">
+            <Text className="text-base text-on-surface-variant">Hủy</Text>
+          </Pressable>
+          <Text className="text-base font-bold text-on-surface">Gửi voucher cho khách</Text>
+          <Pressable onPress={() => notifyMutation.mutate()} disabled={notifyMutation.isPending} className="p-2 -mr-2">
+            {notifyMutation.isPending
+              ? <ActivityIndicator size="small" color="#1E40AF" />
+              : <Text className="text-base font-bold text-primary">Gửi</Text>
+            }
+          </Pressable>
+        </View>
+        <ScrollView className="flex-1 px-5 pt-6" keyboardShouldPersistTaps="handled">
+          <View className="bg-primary/10 rounded-xl px-4 py-3 mb-5">
+            <Text className="text-xs text-primary font-semibold">Voucher: {voucherCode}</Text>
+            <Text className="text-xs text-on-surface-variant mt-1">Hệ thống sẽ gửi thông báo đến tất cả khách hàng đã từng đặt dịch vụ từ workspace này.</Text>
+          </View>
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">Tin nhắn tùy chọn</Text>
+          <TextInput
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface text-sm"
+            value={message}
+            onChangeText={setMessage}
+            placeholder="VD: Dùng ngay hôm nay để nhận ưu đãi đặc biệt!"
+            placeholderTextColor="#9CA3AF"
+            multiline
+            numberOfLines={4}
+            style={{ textAlignVertical: 'top', minHeight: 100 }}
+          />
+          <Text className="text-xs text-on-surface-variant mt-2">Để trống để dùng tin nhắn mặc định từ hệ thống.</Text>
+          <View className="h-20" />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 interface VoucherForm {
   code: string;
   name: string;
@@ -262,6 +359,7 @@ export default function VouchersScreen() {
   const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Voucher | null>(null);
+  const [notifyVoucher, setNotifyVoucher] = useState<Voucher | null>(null);
 
   const { data: vouchers, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['vouchers'],
@@ -411,7 +509,9 @@ export default function VouchersScreen() {
                 {v.end_date && <Text className="text-xs text-on-surface-variant">To {formatDate(v.end_date)}</Text>}
               </View>
 
-              <View className="flex-row items-center justify-between mt-3 pt-3 border-t border-outline/10">
+              <VoucherStatsRow voucherId={v.id} />
+
+              <View className="flex-row items-center justify-between mt-2 pt-3 border-t border-outline/10">
                 <View className="flex-row items-center gap-2">
                   <Text className="text-xs text-on-surface-variant">Active</Text>
                   <Switch
@@ -422,6 +522,12 @@ export default function VouchersScreen() {
                   />
                 </View>
                 <View className="flex-row gap-2">
+                  <Pressable
+                    onPress={() => setNotifyVoucher(v)}
+                    className="bg-primary/10 rounded-lg px-3 py-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-primary">📣 Gửi</Text>
+                  </Pressable>
                   <Pressable
                     onPress={() => { setEditing(v); setShowModal(true); }}
                     className="bg-surface-container-high rounded-lg px-3 py-1.5"
@@ -449,6 +555,15 @@ export default function VouchersScreen() {
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
       />
+
+      {notifyVoucher && (
+        <NotifyModal
+          visible={!!notifyVoucher}
+          voucherId={notifyVoucher.id}
+          voucherCode={notifyVoucher.code}
+          onClose={() => setNotifyVoucher(null)}
+        />
+      )}
     </View>
   );
 }
