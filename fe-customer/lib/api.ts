@@ -90,13 +90,32 @@ export const api = {
   selectTenant: (requestId: string, tenantId: string) =>
     request<{ message: string }>('PATCH', `/requests/${requestId}/select-tenant`, { body: { tenant_id: tenantId } }),
 
-  updateProfile: (data: { full_name?: string; phone?: string; address?: string }) =>
-    request<{ id: string; full_name: string; phone: string | null; address: string | null }>('PATCH', '/auth/profile', { body: data }),
+  updateProfile: (data: {
+    full_name?: string;
+    phone?: string;
+    address?: string;
+    addresses?: SavedAddress[];
+  }) =>
+    request<{ id: string; full_name: string; phone: string | null; address: string | null; addresses: SavedAddress[] }>(
+      'PATCH', '/auth/profile', { body: data },
+    ),
 
-  listWorkspaces: (params: { search?: string; category?: string; page?: number } = {}) => {
+  listWorkspaces: (params: {
+    search?: string;
+    category?: string;
+    lat?: number;
+    lng?: number;
+    min_rating?: number;
+    sort_by?: 'distance' | 'rating' | 'name';
+    page?: number;
+  } = {}) => {
     const q = new URLSearchParams();
     if (params.search) q.set('search', params.search);
     if (params.category) q.set('category', params.category);
+    if (params.lat !== undefined) q.set('lat', String(params.lat));
+    if (params.lng !== undefined) q.set('lng', String(params.lng));
+    if (params.min_rating !== undefined) q.set('min_rating', String(params.min_rating));
+    if (params.sort_by) q.set('sort_by', params.sort_by);
     if (params.page) q.set('page', String(params.page));
     return requestFull<{ data: Workspace[]; meta: { total: number; page: number; limit: number } }>(
       'GET', `/auth/workspaces${q.toString() ? `?${q}` : ''}`,
@@ -111,6 +130,13 @@ export const api = {
   getBill: (requestId: string) =>
     request<Bill>('GET', `/requests/${requestId}/bill`),
 };
+
+export interface SavedAddress {
+  id: string;
+  label: string;
+  address: string;
+  is_default: boolean;
+}
 
 export interface Bill {
   request_id: string;
@@ -133,4 +159,9 @@ export interface Workspace {
   operating_area: string | null;
   benefits: string | null;
   status: string;
+  rating_avg: number | null;
+  rating_count: number;
+  lat: number | null;
+  lng: number | null;
+  distance_m?: number;
 }

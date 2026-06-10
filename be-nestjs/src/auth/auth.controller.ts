@@ -60,7 +60,7 @@ export class AuthController {
   @Patch('profile')
   updateProfile(
     @CurrentUser() user: { id: string },
-    @Body() body: { full_name?: string; phone?: string; address?: string },
+    @Body() body: { full_name?: string; phone?: string; address?: string; addresses?: any[] },
   ) {
     return this.authService.updateCustomerProfile(user.id, body);
   }
@@ -72,6 +72,8 @@ export class AuthController {
     @Query('category') category?: string,
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
+    @Query('min_rating') min_rating?: string,
+    @Query('sort_by') sort_by?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -80,6 +82,8 @@ export class AuthController {
       category,
       lat: lat ? Number(lat) : undefined,
       lng: lng ? Number(lng) : undefined,
+      min_rating: min_rating ? Number(min_rating) : undefined,
+      sort_by: sort_by as 'distance' | 'rating' | 'name' | undefined,
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
     });

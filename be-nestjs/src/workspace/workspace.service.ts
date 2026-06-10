@@ -9,7 +9,7 @@ export class WorkspaceService {
   async getProfile(tenantId: string) {
     const { data, error } = await this.supabase.db
       .from('tenants')
-      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status, created_at')
+      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status, lat, lng, created_at')
       .eq('id', tenantId)
       .single();
     if (error || !data) throw new NotFoundException('Workspace not found');
@@ -25,12 +25,14 @@ export class WorkspaceService {
     if (dto.benefits !== undefined) update.benefits = dto.benefits.trim();
     if (dto.income_level !== undefined) update.income_level = dto.income_level.trim();
     if (dto.policies !== undefined) update.policies = dto.policies.trim();
+    if (dto.lat !== undefined) update.lat = dto.lat;
+    if (dto.lng !== undefined) update.lng = dto.lng;
 
     const { data, error } = await this.supabase.db
       .from('tenants')
       .update(update)
       .eq('id', tenantId)
-      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status')
+      .select('id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, policies, status, lat, lng')
       .single();
 
     if (error) throw new BadRequestException(error.message);

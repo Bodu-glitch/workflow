@@ -8,6 +8,7 @@ import {
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { GoogleAuthDto } from './dto/google-auth.dto.js';
 import { CompleteGoogleOnboardingDto } from './dto/complete-google-onboarding.dto.js';
+import { haversineDistance } from '../common/utils/haversine.util.js';
 
 function generateSlug(name: string): string {
   return name
@@ -285,17 +286,23 @@ export class AuthService {
     return { message: 'Device token updated' };
   }
 
-  async updateCustomerProfile(userId: string, dto: { full_name?: string; phone?: string; address?: string }) {
+  async updateCustomerProfile(userId: string, dto: {
+    full_name?: string;
+    phone?: string;
+    address?: string;
+    addresses?: Array<{ id?: string; label: string; address: string; is_default?: boolean }>;
+  }) {
     const update: Record<string, any> = {};
     if (dto.full_name?.trim()) update.full_name = dto.full_name.trim();
     if (dto.phone !== undefined) update.phone = dto.phone.trim() || null;
     if (dto.address !== undefined) update.address = dto.address.trim() || null;
+    if (dto.addresses !== undefined) update.addresses = dto.addresses;
 
     const { data, error } = await this.supabase.db
       .from('users')
       .update(update)
       .eq('id', userId)
-      .select('id, email, full_name, phone, address, avatar_url, role')
+      .select('id, email, full_name, phone, address, addresses, avatar_url, role')
       .single();
 
     if (error) throw new BadRequestException(error.message);
@@ -308,24 +315,48 @@ export class AuthService {
     category?: string;
     lat?: number;
     lng?: number;
+    min_rating?: number;
+    sort_by?: 'distance' | 'rating' | 'name';
     page?: number;
     limit?: number;
   }) {
-    const { page = 1, limit = 20, search, category } = params;
-    const offset = (page - 1) * limit;
+    const { page = 1, limit = 20, search, category, lat, lng, min_rating, sort_by } = params;
+    const sortByDistance = sort_by === 'distance' && lat !== undefined && lng !== undefined;
 
     let query = this.supabase.db
       .from('tenants')
-      .select(`
-        id, name, slug, logo_url, description, industry, operating_area,
-        benefits, income_level, status
-      `, { count: 'exact' })
-      .eq('status', 'active')
-      .range(offset, offset + limit - 1)
-      .order('name');
+      .select(`id, name, slug, logo_url, description, industry, operating_area, benefits, income_level, status, rating_avg, rating_count, lat, lng`, { count: 'exact' })
+      .eq('status', 'active');
 
     if (search) query = query.ilike('name', `%${search}%`);
     if (category) query = query.ilike('industry', `%${category}%`);
+    if (min_rating) query = query.gte('rating_avg', min_rating);
+
+    if (sortByDistance) {
+      // Fetch all matching rows and sort in-app by haversine distance
+      const { data: allData, count, error } = await query;
+      if (error) throw new BadRequestException(error.message);
+      const withDistance = (allData ?? []).map((t: any) => ({
+        ...t,
+        distance_m: (t.lat != null && t.lng != null)
+          ? haversineDistance(lat!, lng!, t.lat, t.lng)
+          : Infinity,
+      }));
+      withDistance.sort((a, b) => a.distance_m - b.distance_m);
+      const offset = (page - 1) * limit;
+      return {
+        data: withDistance.slice(offset, offset + limit),
+        meta: { total: count ?? allData?.length ?? 0, page, limit },
+      };
+    }
+
+    const offset = (page - 1) * limit;
+    if (sort_by === 'rating') {
+      query = query.order('rating_avg', { ascending: false, nullsFirst: false });
+    } else {
+      query = query.order('name');
+    }
+    query = query.range(offset, offset + limit - 1);
 
     const { data, count, error } = await query;
     if (error) throw new BadRequestException(error.message);

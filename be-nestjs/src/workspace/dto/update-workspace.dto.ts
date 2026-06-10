@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsNumber } from 'class-validator';
 
 export class UpdateWorkspaceDto {
   @IsOptional()
@@ -28,4 +28,12 @@ export class UpdateWorkspaceDto {
   @IsOptional()
   @IsString()
   policies?: string;
+
+  @IsOptional()
+  @IsNumber()
+  lat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  lng?: number;
 }

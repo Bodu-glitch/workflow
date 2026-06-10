@@ -333,7 +333,7 @@ export default function BODashboardScreen() {
           {/* Services */}
           <View>
             <Text className="text-base font-bold text-on-surface mb-3">Services</Text>
-            <View className="flex-row gap-3">
+            <View className="flex-row gap-3 mb-3">
               <Pressable
                 onPress={() => router.push('/(bo)/pricing')}
                 className="flex-1 rounded-2xl p-4 active:opacity-70"
@@ -353,6 +353,18 @@ export default function BODashboardScreen() {
                 <Text className="text-xs text-on-surface-variant mt-0.5">Manage discount codes</Text>
               </Pressable>
             </View>
+            <Pressable
+              onPress={() => router.push('/(bo)/workspace-profile')}
+              className="rounded-2xl p-4 flex-row items-center gap-3 active:opacity-70"
+              style={{ backgroundColor: '#fdf4ff' }}
+            >
+              <Text style={{ fontSize: 22 }}>🏢</Text>
+              <View className="flex-1">
+                <Text className="text-sm font-bold" style={{ color: '#7c3aed' }}>Workspace Profile</Text>
+                <Text className="text-xs text-on-surface-variant mt-0.5">Chỉnh sửa thông tin doanh nghiệp</Text>
+              </View>
+              <Text className="text-on-surface-variant">›</Text>
+            </Pressable>
           </View>
 
           {/* Critical Activities */}

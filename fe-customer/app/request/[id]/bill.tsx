@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image,
+  ActivityIndicator, Image, Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { api } from '../../../lib/api';
@@ -61,7 +61,16 @@ export default function BillScreen() {
           <Text style={styles.headerBackText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Hóa đơn</Text>
-        <View style={{ width: 36 }} />
+        {Platform.OS === 'web' ? (
+          <TouchableOpacity
+            onPress={() => (window as any).print()}
+            style={styles.printBtn}
+          >
+            <Text style={styles.printBtnText}>🖨 In / PDF</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 36 }} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
@@ -168,6 +177,8 @@ const styles = StyleSheet.create({
   qrAmountLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
   qrAmountValue: { fontSize: 18, fontWeight: '800', color: COLORS.primary },
   hint: { fontSize: 12, color: COLORS.textSecondary, textAlign: 'center', marginTop: 4 },
+  printBtn: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: COLORS.primary + '15', borderRadius: 10 },
+  printBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
   paidCard: { backgroundColor: COLORS.success + '15', borderRadius: 16, padding: 24, alignItems: 'center', gap: 6 },
   paidIcon: { fontSize: 40 },
   paidTitle: { fontSize: 16, fontWeight: '700', color: COLORS.success },
