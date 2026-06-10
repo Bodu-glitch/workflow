@@ -63,5 +63,13 @@ export function useSocket(token: string | null) {
     [],
   );
 
-  return { joinRequestRoom, onLocationUpdate, onStatusChange, onChatMessage, onRequote, sendChatMessage };
+  const onNotification = useCallback(
+    (cb: (notification: Record<string, any>) => void) => {
+      socketRef.current?.on('notification:new', cb);
+      return () => { socketRef.current?.off('notification:new', cb); };
+    },
+    [],
+  );
+
+  return { joinRequestRoom, onLocationUpdate, onStatusChange, onChatMessage, onRequote, sendChatMessage, onNotification };
 }

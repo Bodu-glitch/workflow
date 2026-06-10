@@ -76,6 +76,17 @@ export const CATEGORY_BG_COLORS: Record<string, string> = {
   'dien-dan-dung': '#FEF9C3',
 };
 
+/** Giá tham khảo thị trường (đơn vị: đồng). Chỉ mang tính chất tham khảo. */
+export const CATEGORY_REFERENCE_PRICES: Record<string, { min: number; max: number; note: string }> = {
+  'sua-laptop': { min: 150_000, max: 2_000_000, note: 'Tùy loại linh kiện thay thế' },
+  'sua-xe-may': { min: 50_000,  max: 500_000,   note: 'Tùy mức độ hỏng hóc' },
+  'sua-o-to':   { min: 200_000, max: 5_000_000, note: 'Tùy hãng xe và linh kiện' },
+  'dien-dien-lanh': { min: 100_000, max: 1_500_000, note: 'Bao gồm gas và vật tư' },
+  'it-support': { min: 100_000, max: 800_000,   note: 'Tùy loại dịch vụ IT' },
+  'khoa-cua':   { min: 80_000,  max: 500_000,   note: 'Bao gồm thay ổ khóa mới nếu cần' },
+  'dien-dan-dung': { min: 80_000, max: 1_000_000, note: 'Tùy khối lượng công việc' },
+};
+
 export const CATEGORY_PROBLEMS: Record<string, string[]> = {
   'sua-laptop': ['Không lên nguồn', 'Màn hình bị hỏng', 'Bàn phím không hoạt động', 'Pin chai/không sạc', 'Máy chạy chậm', 'Khác'],
   'sua-xe-may': ['Xe không nổ máy', 'Hỏng phanh', 'Thay lốp/vá xe', 'Xe bị ngã/hỏng', 'Đèn không sáng', 'Khác'],

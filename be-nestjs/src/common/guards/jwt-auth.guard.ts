@@ -7,7 +7,10 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
-    const token = req.headers['authorization']?.split(' ')[1];
+    // Support both Authorization header and ?token= query param (used when opening PDFs in browser)
+    const token =
+      req.headers['authorization']?.split(' ')[1] ??
+      req.query?.token;
     if (!token) throw new UnauthorizedException();
 
     const { data: { user }, error } = await this.supabase.db.auth.getUser(token);

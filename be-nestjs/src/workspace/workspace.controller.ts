@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Post, Put,
+  Controller, Get, Patch, Post, Put, Param,
   Body, UseGuards, UseInterceptors, UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
@@ -43,31 +43,6 @@ export class WorkspaceController {
     return this.workspaceService.updateCommissionConfig(user.tenant_id, body);
   }
 
-  /** GET /workspace/payment — BO + OT: read bank payment config */
-  @Get('payment')
-  @UseGuards(RolesGuard)
-  @Roles('business_owner', 'operator')
-  getPaymentInfo(@CurrentUser() user: CurrentUserType) {
-    return this.workspaceService.getPaymentInfo(user.tenant_id);
-  }
-
-  /** PATCH /workspace/payment — BO + OT: set bank payment config */
-  @Patch('payment')
-  @UseGuards(RolesGuard)
-  @Roles('business_owner', 'operator')
-  updatePaymentInfo(
-    @CurrentUser() user: CurrentUserType,
-    @Body() body: { bank_code: string; account_number: string; account_name: string },
-  ) {
-    if (!body.bank_code?.trim() || !body.account_number?.trim() || !body.account_name?.trim()) {
-      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: 'Thiếu thông tin thanh toán' });
-    }
-    return this.workspaceService.updatePaymentInfo(user.tenant_id, {
-      bank_code: body.bank_code.trim().toUpperCase(),
-      account_number: body.account_number.trim(),
-      account_name: body.account_name.trim().toUpperCase(),
-    });
-  }
 
   /** GET /workspace/profile — BO + OT: read workspace info */
   @Get('profile')
@@ -88,8 +63,7 @@ export class WorkspaceController {
     return this.workspaceService.updateProfile(user.tenant_id, dto);
   }
 
-  /** PATCH /workspace/status — BO only: đổi trạng thái workspace (active/inactive/pending)
-   *  'suspended' không được phép — admin-only */
+  /** PATCH /workspace/status — BO only */
   @Patch('status')
   @UseGuards(RolesGuard)
   @Roles('business_owner')
@@ -108,7 +82,7 @@ export class WorkspaceController {
     return this.workspaceService.getStats(user.tenant_id);
   }
 
-  /** GET /workspace/service-categories — BO + OT: xem dịch vụ tenant đã đăng ký */
+  /** GET /workspace/service-categories */
   @Get('service-categories')
   @UseGuards(RolesGuard)
   @Roles('business_owner', 'operator')
@@ -116,7 +90,7 @@ export class WorkspaceController {
     return this.workspaceService.getServiceCategories(user.tenant_id);
   }
 
-  /** PUT /workspace/service-categories — BO only: cập nhật toàn bộ danh sách dịch vụ */
+  /** PUT /workspace/service-categories */
   @Put('service-categories')
   @UseGuards(RolesGuard)
   @Roles('business_owner')
@@ -127,7 +101,7 @@ export class WorkspaceController {
     return this.workspaceService.setServiceCategories(user.tenant_id, dto.category_ids);
   }
 
-  /** POST /workspace/logo — BO only: upload workspace logo */
+  /** POST /workspace/logo */
   @Post('logo')
   @UseGuards(RolesGuard)
   @Roles('business_owner')
@@ -137,5 +111,39 @@ export class WorkspaceController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.workspaceService.updateLogo(user.tenant_id, file);
+  }
+
+  /** GET /workspace/payment-info — BO/OT: thông tin thanh toán */
+  @Get('payment-info')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner', 'operator')
+  getPaymentInfo(@CurrentUser() user: CurrentUserType) {
+    return this.workspaceService.getPaymentInfo(user.tenant_id);
+  }
+
+  /** PATCH /workspace/payment-info — BO: cập nhật thông tin ngân hàng */
+  @Patch('payment-info')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner')
+  updatePaymentInfo(@CurrentUser() user: CurrentUserType, @Body() dto: any) {
+    return this.workspaceService.updatePaymentInfo(user.tenant_id, dto);
+  }
+
+  /** POST /workspace/payment-qr — BO: upload QR ảnh */
+  @Post('payment-qr')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadPaymentQr(
+    @CurrentUser() user: CurrentUserType,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.workspaceService.uploadPaymentQr(user.tenant_id, file);
+  }
+
+  /** GET /workspace/public-payment/:tenantId — Public: lấy QR cho customer + staff */
+  @Get('public-payment/:tenantId')
+  getPublicPaymentInfo(@Param('tenantId') tenantId: string) {
+    return this.workspaceService.getPublicPaymentInfo(tenantId);
   }
 }

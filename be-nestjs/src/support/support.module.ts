@@ -8,5 +8,6 @@ import { GatewayModule } from '../gateway/gateway.module.js';
   imports: [NotificationsModule, GatewayModule],
   controllers: [SupportController],
   providers: [SupportService],
+  exports: [SupportService],
 })
 export class SupportModule {}

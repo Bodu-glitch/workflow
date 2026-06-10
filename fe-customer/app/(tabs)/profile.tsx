@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView,
   TextInput, ActivityIndicator, Image, Platform,
 } from 'react-native';
+import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../lib/api';

@@ -8,12 +8,12 @@ export default function StaffLayout() {
       indicatorColor="#EFF6FF"
       labelStyle={{ selected: { color: '#1E40AF' } }}
     >
-      <NativeTabs.Trigger name="index" disableTransparentOnScrollEdge>
+      <NativeTabs.Trigger name="jobs" disableTransparentOnScrollEdge>
         <NativeTabs.Trigger.Icon
-          sf={{ default: 'list.bullet', selected: 'list.bullet.fill' }}
-          md="assignment"
+          sf={{ default: 'wrench.and.screwdriver', selected: 'wrench.and.screwdriver.fill' }}
+          md="build"
         />
-        <NativeTabs.Trigger.Label>Tasks</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Dịch vụ</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="schedule" disableTransparentOnScrollEdge>
@@ -23,6 +23,15 @@ export default function StaffLayout() {
         />
         <NativeTabs.Trigger.Label>Lịch</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="income" disableTransparentOnScrollEdge>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: 'banknote', selected: 'banknote.fill' }}
+          md="payments"
+        />
+        <NativeTabs.Trigger.Label>Thu nhập</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+
 
       <NativeTabs.Trigger name="history" disableTransparentOnScrollEdge>
         <NativeTabs.Trigger.Icon

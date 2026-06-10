@@ -16,6 +16,18 @@ export interface ServiceRequestSummary {
   staff?: { id: string; full_name: string; avatar_url: string | null } | null;
 }
 
+export interface ChatMessage {
+  id: string;
+  request_id: string;
+  user_id: string;
+  channel: string;
+  content: string | null;
+  media_urls: string[];
+  is_system: boolean;
+  created_at: string;
+  sender?: { id: string; full_name: string; avatar_url?: string | null } | null;
+}
+
 function buildQuery(params: Record<string, string | number | undefined>): string {
   const q = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== '')
@@ -48,5 +60,16 @@ export const requestsApi = {
     apiFetch<{ data: ServiceRequestSummary }>(`/requests/${id}/cancel`, {
       method: 'PATCH',
       body: JSON.stringify({ reason }),
+    }),
+
+  getChatHistory: (requestId: string, channel = 'customer_staff', page = 1, limit = 50) =>
+    apiFetch<{ data: ChatMessage[]; meta: { total: number; page: number; limit: number } }>(
+      `/requests/${requestId}/chat/${channel}?page=${page}&limit=${limit}`,
+    ),
+
+  sendChatMessage: (requestId: string, content: string, channel = 'customer_staff') =>
+    apiFetch<{ data: ChatMessage }>(`/requests/${requestId}/chat/${channel}`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
     }),
 };

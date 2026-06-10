@@ -408,4 +408,105 @@ export class TechnicianService {
 
     return { message: 'Location updated' };
   }
+
+  /** GET /technician/earnings?period=day|week|month — Thu nhập nhân viên */
+  async getEarnings(user: CurrentUser, period: 'day' | 'week' | 'month' = 'month') {
+    const now = new Date();
+    let from: Date;
+
+    if (period === 'day') {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (period === 'week') {
+      const day = now.getDay();
+      from = new Date(now);
+      from.setDate(now.getDate() - day);
+      from.setHours(0, 0, 0, 0);
+    } else {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    const { data: jobs, error } = await this.supabase.db
+      .from('service_requests')
+      .select(`
+        id, agreed_price, collected_amount, final_amount, discount_amount,
+        completed_at, status,
+        category:category_id(id, name, slug),
+        tenant:tenant_id(id, name, commission_platform_percent, commission_staff_percent),
+        ratings!left(score)
+      `)
+      .eq('assigned_staff_id', user.id)
+      .in('status', ['completed', 'completed_late'])
+      .gte('completed_at', from.toISOString())
+      .order('completed_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+    const rows = jobs ?? [];
+
+    // Tính thu nhập
+    const jobsWithEarnings = rows.map((job: any) => {
+      const grossAmount = job.collected_amount ?? job.final_amount ?? job.agreed_price ?? 0;
+      const staffPercent = (job.tenant?.commission_staff_percent ?? 70) / 100;
+      const staffEarning = Math.round(grossAmount * staffPercent);
+      return {
+        id: job.id,
+        completed_at: job.completed_at,
+        status: job.status,
+        category: job.category,
+        gross_amount: grossAmount,
+        staff_earning: staffEarning,
+        rating: job.ratings?.[0]?.score ?? null,
+      };
+    });
+
+    const totalGross = jobsWithEarnings.reduce((s, j) => s + j.gross_amount, 0);
+    const totalEarning = jobsWithEarnings.reduce((s, j) => s + j.staff_earning, 0);
+    const avgRating = rows.filter((j: any) => j.ratings?.[0]?.score).length > 0
+      ? rows.filter((j: any) => j.ratings?.[0]?.score)
+          .reduce((s: number, j: any) => s + j.ratings[0].score, 0) / rows.filter((j: any) => j.ratings?.[0]?.score).length
+      : null;
+
+    return {
+      period,
+      from: from.toISOString(),
+      to: now.toISOString(),
+      summary: {
+        total_jobs: rows.length,
+        total_gross: totalGross,
+        total_earning: totalEarning,
+        avg_rating: avgRating ? Math.round(avgRating * 10) / 10 : null,
+      },
+      jobs: jobsWithEarnings,
+    };
+  }
+
+  /** PATCH /technician/jobs/:id/update-checklist — cập nhật checklist hoàn thành */
+  async updateChecklist(id: string, checklist: any[], user: CurrentUser) {
+    const job = await this.getJob(id, user);
+    if (!['in_progress', 'assigned'].includes(job.status)) {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Cannot update checklist at this stage' });
+    }
+
+    const { data, error } = await this.supabase.db
+      .from('service_requests')
+      .update({ completion_checklist: checklist })
+      .eq('id', id)
+      .select('id, completion_checklist, agreed_price')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    // Tính lại giá từ checklist
+    const totalPrice = checklist
+      .filter((item: any) => item.checked)
+      .reduce((sum: number, item: any) => sum + (item.price ?? 0), 0);
+
+    if (totalPrice > 0) {
+      await this.supabase.db
+        .from('service_requests')
+        .update({ agreed_price: totalPrice })
+        .eq('id', id);
+    }
+
+    return { ...data, calculated_price: totalPrice };
+  }
 }

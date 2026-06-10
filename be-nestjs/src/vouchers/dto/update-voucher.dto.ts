@@ -1,15 +1,14 @@
-import { IsString, IsEnum, IsNumber, IsOptional, IsInt, IsBoolean, IsDateString, MinLength, Min } from 'class-validator';
+import { IsString, IsEnum, IsNumber, IsOptional, IsBoolean, IsInt, IsDateString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateVoucherDto {
   @IsOptional()
   @IsString()
-  @MinLength(3)
   name?: string;
 
   @IsOptional()
-  @IsEnum(['percentage', 'fixed'])
-  type?: 'percentage' | 'fixed';
+  @IsEnum(['percent', 'fixed'])
+  type?: 'percent' | 'fixed';
 
   @IsOptional()
   @IsNumber()
@@ -21,13 +20,17 @@ export class UpdateVoucherDto {
   @IsNumber()
   @Type(() => Number)
   @Min(0)
-  min_order_amount?: number;
+  max_discount?: number;
 
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   @Min(0)
-  max_discount?: number;
+  min_order_value?: number;
+
+  @IsOptional()
+  @IsString()
+  service_category_id?: string;
 
   @IsOptional()
   @IsInt()
@@ -36,14 +39,18 @@ export class UpdateVoucherDto {
   usage_limit?: number;
 
   @IsOptional()
-  @IsDateString()
-  start_date?: string;
-
-  @IsOptional()
-  @IsDateString()
-  end_date?: string;
+  @IsBoolean()
+  is_public?: boolean;
 
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  starts_at?: string;
+
+  @IsOptional()
+  @IsDateString()
+  ends_at?: string;
 }

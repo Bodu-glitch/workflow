@@ -1,5 +1,6 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PaginationDto } from '../common/dto/pagination.dto.js';
 
 interface CurrentUser {
@@ -10,7 +11,10 @@ interface CurrentUser {
 
 @Injectable()
 export class ChatService {
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    @Inject(forwardRef(() => NotificationsService)) private notifications: NotificationsService,
+  ) {}
 
   async getHistory(
     requestId: string,
@@ -61,7 +65,48 @@ export class ChatService {
       .single();
 
     if (error) throw new BadRequestException(error.message);
+
+    // Notify the other party when a message is sent on customer_operator channel
+    if (channel === 'customer_operator') {
+      void this.notifyNewChatMessage(requestId, user, content ?? '📎 Tệp đính kèm');
+    }
+
     return data;
+  }
+
+  private async notifyNewChatMessage(requestId: string, sender: CurrentUser, preview: string) {
+    // Fetch request info to determine tenant and involved parties
+    const { data: request } = await this.supabase.db
+      .from('service_requests')
+      .select('customer_id, tenant_id, category:category_id(name)')
+      .eq('id', requestId)
+      .single();
+
+    if (!request) return;
+
+    const senderIsCustomer = sender.role === 'customer' || sender.tenant_id === null;
+
+    if (senderIsCustomer && request.tenant_id) {
+      // Customer sent message → notify BO/OT managers
+      const { data: managers } = await this.supabase.db
+        .from('user_tenants')
+        .select('user_id')
+        .eq('tenant_id', request.tenant_id)
+        .in('role', ['business_owner', 'operator'])
+        .eq('is_active', true);
+
+      if (managers && managers.length > 0) {
+        const categoryName = (request.category as any)?.name ?? 'Dịch vụ';
+        void this.notifications.sendPushNotification({
+          user_ids: managers.map((m: any) => m.user_id),
+          type: 'new_chat_message',
+          title: `💬 Tin nhắn mới — ${categoryName}`,
+          body: preview.length > 80 ? preview.substring(0, 80) + '…' : preview,
+          request_id: requestId,
+          tenant_id: request.tenant_id,
+        });
+      }
+    }
   }
 
   private async verifyAccess(

@@ -1,3 +1,4 @@
+import { useEffect, useCallback } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -5,8 +6,19 @@ import { View, Text, Pressable } from '@/tw';
 import { notificationsApi } from '@/lib/api/notifications';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
+import { useSocket } from '@/hooks/useSocket';
 import { useAuth } from '@/context/auth';
 import type { Notification } from '@/types/api';
+
+function navigateFromNotification(item: Notification) {
+  if (item.request_id) {
+    router.push({ pathname: '/(staff)/jobs/[id]' as const, params: { id: item.request_id } });
+    return;
+  }
+  if (item.task_id) {
+    router.push({ pathname: '/(staff)/tasks/[id]' as const, params: { id: item.task_id } });
+  }
+}
 
 // Reminder (warning) — vàng: bold "X min"
 function ReminderBody({ body }: { body: string }) {
@@ -99,11 +111,27 @@ function NotificationItem({
 export default function NotificationCenterScreen() {
   const { role } = useAuth();
   const qc = useQueryClient();
+  const { onNotification } = useSocket();
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => notificationsApi.list(),
   });
+
+  // Real-time: new notification arrives via socket → prepend to list
+  useEffect(() => {
+    const off = onNotification((notif) => {
+      qc.setQueryData<typeof data>(['notifications'], (old) => {
+        if (!old) return old;
+        const newNotif = { ...(notif as Notification), is_read: false };
+        return {
+          ...old,
+          data: [newNotif, ...(old.data ?? [])],
+        };
+      });
+    });
+    return off;
+  }, [onNotification, qc]);
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),
@@ -122,8 +150,7 @@ export default function NotificationCenterScreen() {
   });
 
   const handleNavigate = (item: Notification) => {
-    if (!item.task_id) return;
-    if (role === 'staff') router.push(`/(staff)/tasks/${item.task_id}`);
+    navigateFromNotification(item);
   };
 
   if (isLoading) return <LoadingScreen />;
@@ -142,15 +169,15 @@ export default function NotificationCenterScreen() {
               <Text className="text-primary font-semibold">← Back</Text>
             </Pressable>
             <View>
-              <Text className="text-xl font-extrabold text-on-surface tracking-tight">Notifications</Text>
+              <Text className="text-xl font-extrabold text-on-surface tracking-tight">Thông báo</Text>
               {unreadCount > 0 && (
-                <Text className="text-xs text-primary font-semibold">{unreadCount} unread</Text>
+                <Text className="text-xs text-primary font-semibold">{unreadCount} chưa đọc</Text>
               )}
             </View>
           </View>
           {unreadCount > 0 && (
             <Pressable onPress={() => markAllReadMutation.mutate()} disabled={markAllReadMutation.isPending} className="active:opacity-60">
-              <Text className="text-xs font-bold text-primary">Mark all read</Text>
+              <Text className="text-xs font-bold text-primary">Đánh dấu tất cả đã đọc</Text>
             </Pressable>
           )}
         </View>
@@ -170,7 +197,7 @@ export default function NotificationCenterScreen() {
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         ListEmptyComponent={
           <View className="py-16 items-center">
-            <Text className="text-on-surface-variant text-sm">No notifications</Text>
+            <Text className="text-on-surface-variant text-sm">Chưa có thông báo</Text>
           </View>
         }
       />

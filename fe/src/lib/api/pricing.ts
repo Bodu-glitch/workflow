@@ -22,7 +22,7 @@ export interface ServicePricing {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  category?: { id: string; name: string; slug: string; icon_url?: string } | null;
+  category?: { id: string; name: string; slug: string; icon_url?: string | null } | null;
 }
 
 export interface CreatePricingInput {
@@ -37,14 +37,21 @@ export interface CreatePricingInput {
   peak_hours_config?: PeakHourSlot[];
 }
 
-export type UpdatePricingInput = Partial<CreatePricingInput>;
+export type UpdatePricingInput = Partial<CreatePricingInput & {
+  is_active: boolean;
+}>;
 
 export const categoriesApi = {
   listAll: () => apiFetch<{ data: { id: string; name: string; slug: string; icon_url?: string; sort_order: number; is_active: boolean }[] }>('/categories'),
 };
 
 export const pricingApi = {
-  list: (tenantId: string, categoryId?: string) => {
+  list: (category_id?: string) => {
+    const qs = category_id ? `?category_id=${category_id}` : '';
+    return apiFetch<{ data: ServicePricing[] }>(`/pricing${qs}`);
+  },
+
+  listByTenant: (tenantId: string, categoryId?: string) => {
     const q = categoryId ? `?category_id=${categoryId}` : '';
     return apiFetch<{ data: ServicePricing[] }>(`/pricing/tenant/${tenantId}${q}`);
   },
@@ -60,6 +67,9 @@ export const pricingApi = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
+
+  delete: (id: string) =>
+    apiFetch<{ message: string }>(`/pricing/${id}`, { method: 'DELETE' }),
 
   remove: (id: string) =>
     apiFetch<{ message: string }>(`/pricing/${id}`, { method: 'DELETE' }),

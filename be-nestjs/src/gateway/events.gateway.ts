@@ -7,6 +7,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
+import { Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import { ChatService } from '../chat/chat.service.js';
@@ -20,6 +21,8 @@ import {
   tenantStaffRoom,
   staffRoom,
   customerRoom,
+  ticketRoom,
+  userRoom,
 } from './gateway.types.js';
 
 interface SocketUser {
@@ -39,7 +42,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   constructor(
     private supabase: SupabaseService,
-    private chat: ChatService,
+    @Inject(forwardRef(() => ChatService)) private chat: ChatService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -95,12 +98,29 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const socketUser: SocketUser = { id: user.id, email: user.email!, role, tenant_id: tenantId };
       client.data.user = socketUser;
 
+      // All users join their personal notification room
+      client.join(userRoom(user.id));
+
       // Auto-join rooms based on role
       if (role === 'customer') {
         client.join(customerRoom(user.id));
       } else if (role === 'staff') {
         client.join(staffRoom(user.id));
-        if (tenantId) client.join(tenantStaffRoom(tenantId));
+        if (tenantId) {
+          client.join(tenantStaffRoom(tenantId));
+          // Staff goes online — update DB + notify management
+          await this.supabase.db
+            .from('user_tenants')
+            .update({ online_status: 'online' })
+            .eq('user_id', user.id)
+            .eq('tenant_id', tenantId);
+
+          this.server.to(tenantPoolRoom(tenantId)).emit(WS_EVENTS.STAFF_STATUS_CHANGED, {
+            userId: user.id,
+            online_status: 'online',
+            tenant_id: tenantId,
+          });
+        }
       } else if (['business_owner', 'operator'].includes(role) && tenantId) {
         client.join(tenantPoolRoom(tenantId));
       }
@@ -109,8 +129,28 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  handleDisconnect(_client: Socket) {
-    // Cleanup handled by socket.io automatically
+  async handleDisconnect(client: Socket) {
+    const user: SocketUser | undefined = client.data.user;
+    if (!user) return;
+
+    // Staff goes offline on disconnect
+    if (user.role === 'staff' && user.tenant_id) {
+      try {
+        await this.supabase.db
+          .from('user_tenants')
+          .update({ online_status: 'offline' })
+          .eq('user_id', user.id)
+          .eq('tenant_id', user.tenant_id);
+
+        this.server.to(tenantPoolRoom(user.tenant_id)).emit(WS_EVENTS.STAFF_STATUS_CHANGED, {
+          userId: user.id,
+          online_status: 'offline',
+          tenant_id: user.tenant_id,
+        });
+      } catch {
+        // Best effort
+      }
+    }
   }
 
   @SubscribeMessage(WS_EVENTS.PING)
@@ -130,6 +170,16 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.join(trackingRoom(data.requestId));
     client.join(chatRoom(data.requestId, 'customer_operator'));
     client.join(chatRoom(data.requestId, 'customer_staff'));
+  }
+
+  @SubscribeMessage(WS_EVENTS.JOIN_TICKET)
+  handleJoinTicket(
+    @MessageBody() data: { ticketId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const user: SocketUser = client.data.user;
+    if (!user) return;
+    client.join(ticketRoom(data.ticketId));
   }
 
   @SubscribeMessage(WS_EVENTS.LOCATION_UPDATE)
@@ -236,7 +286,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.emitStaffChatMessage(user.tenant_id, message);
   }
 
-  // Public methods for other services to broadcast events
+  // ── Public methods for other services to broadcast events ─────────────────
   emitRequestStatusChanged(requestId: string, status: string) {
     const payload = { requestId, status, timestamp: new Date().toISOString() };
     this.server.to(requestRoom(requestId)).emit(WS_EVENTS.REQUEST_STATUS_CHANGED, payload);
@@ -278,9 +328,30 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(tenantPoolRoom(tenantId)).emit(WS_EVENTS.STAFF_POOL_UPDATED, { requestId, tenantId });
   }
 
+  emitStaffStatusChanged(tenantId: string, userId: string, onlineStatus: string) {
+    this.server.to(tenantPoolRoom(tenantId)).emit(WS_EVENTS.STAFF_STATUS_CHANGED, {
+      userId,
+      online_status: onlineStatus,
+      tenant_id: tenantId,
+    });
+  }
+
+  /** Emit a new notification to the target user's personal room */
+  emitNotification(userId: string, notification: Record<string, any>) {
+    this.server.to(userRoom(userId)).emit(WS_EVENTS.NOTIFICATION_NEW, notification);
+  }
+
   emitNotificationNew(userId: string, data: Record<string, any>) {
     this.server.to(staffRoom(userId)).emit(WS_EVENTS.NOTIFICATION_NEW, data);
     this.server.to(customerRoom(userId)).emit(WS_EVENTS.NOTIFICATION_NEW, data);
+  }
+
+  /** Emit a new support message to all participants in a ticket room */
+  emitSupportMessage(ticketId: string, message: Record<string, any>) {
+    this.server.to(ticketRoom(ticketId)).emit(WS_EVENTS.SUPPORT_MESSAGE, {
+      ticketId,
+      message,
+    });
   }
 
   emitScheduleUpdated(userId: string) {

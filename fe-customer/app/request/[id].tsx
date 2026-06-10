@@ -169,6 +169,7 @@ export default function RequestDetailScreen() {
   const showMap = TRACKING_ACTIVE.includes(request.status) || staffLocation != null;
   const canCancel = CANCELLABLE.includes(request.status);
   const canRelease = RELEASABLE.includes(request.status);
+  const canPay = request.status === 'in_progress' || request.status === 'assigned';
   const customerCoord = { latitude: request.location_lat, longitude: request.location_lng };
 
   return (
@@ -322,6 +323,14 @@ export default function RequestDetailScreen() {
               )}
             </TouchableOpacity>
           )}
+          {canPay && (
+            <TouchableOpacity
+              style={styles.paymentBtn}
+              onPress={() => router.push({ pathname: '/request/[id]/payment', params: { id } })}
+            >
+              <Text style={styles.paymentBtnText}>💳 Xem thông tin thanh toán</Text>
+            </TouchableOpacity>
+          )}
           {canCancel && (
             <TouchableOpacity
               style={[styles.cancelBtn, cancelling && styles.btnDisabled]}
@@ -437,6 +446,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chatBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  paymentBtn: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: COLORS.success,
+  },
+  paymentBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   billBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: COLORS.surface, borderRadius: 16, padding: 16,

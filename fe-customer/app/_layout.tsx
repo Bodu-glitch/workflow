@@ -53,6 +53,9 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="request" />
         <Stack.Screen name="rating" />
+        <Stack.Screen name="profile" options={{ headerShown: true, headerTitle: 'Hồ sơ', presentation: 'card' }} />
+        <Stack.Screen name="company" options={{ headerShown: true, headerTitle: 'Chi tiết', presentation: 'card' }} />
+        <Stack.Screen name="notifications" options={{ headerShown: true, headerTitle: 'Thông báo', presentation: 'card' }} />
         <Stack.Screen name="workspace" />
       </Stack>
     </>

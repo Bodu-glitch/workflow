@@ -25,6 +25,17 @@ export class PricingController {
     return this.service.getTenantPricing(tenantId, categoryId);
   }
 
+  /** GET /pricing — BO/OT: lấy pricing của tenant mình */
+  @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('business_owner', 'operator')
+  getMyPricing(
+    @CurrentUser() user: CurrentUserType,
+    @Query('category_id') categoryId?: string,
+  ) {
+    return this.service.getTenantPricing(user.tenant_id!, categoryId);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('business_owner', 'operator')

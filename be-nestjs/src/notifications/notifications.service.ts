@@ -39,11 +39,12 @@ export class NotificationsService {
         .from('notifications')
         .insert(records)
         .select();
+
       if (error) {
         console.error('[Notifications] DB insert failed:', error.message);
       } else if (inserted) {
-        for (const record of inserted) {
-          this.gateway.emitNotificationNew(record.user_id, record);
+        for (const notif of inserted) {
+          this.gateway.emitNotification(notif.user_id, notif);
         }
       }
     }
@@ -65,18 +66,21 @@ export class NotificationsService {
     }
   }
 
-  async listNotifications(userId: string, tenantId: string, pagination: PaginationDto) {
+  async listNotifications(userId: string, tenantId: string | null, pagination: PaginationDto) {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
 
-    const { data, count, error } = await this.supabase.db
+    let q = this.supabase.db
       .from('notifications')
       .select('*', { count: 'exact' })
       .eq('user_id', userId)
-      .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
+    // Customers (no tenant) see all their notifications; staff/BO filter by tenant
+    if (tenantId) q = q.eq('tenant_id', tenantId);
+
+    const { data, count, error } = await q;
     if (error) throw new BadRequestException(error.message);
     return { data, meta: { total: count, page, limit } };
   }
@@ -92,25 +96,27 @@ export class NotificationsService {
     return { message: 'Notification marked as read' };
   }
 
-  async markAllRead(userId: string, tenantId: string) {
-    await this.supabase.db
+  async markAllRead(userId: string, tenantId: string | null) {
+    let q = this.supabase.db
       .from('notifications')
       .update({ is_read: true })
       .eq('user_id', userId)
-      .eq('tenant_id', tenantId)
       .eq('is_read', false);
 
+    if (tenantId) q = (q as any).eq('tenant_id', tenantId);
+    await q;
     return { message: 'All notifications marked as read' };
   }
 
-  async getUnreadCount(userId: string, tenantId: string) {
-    const { count } = await this.supabase.db
+  async getUnreadCount(userId: string, tenantId: string | null) {
+    let q = this.supabase.db
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .eq('tenant_id', tenantId)
       .eq('is_read', false);
 
+    if (tenantId) q = q.eq('tenant_id', tenantId);
+    const { count } = await q;
     return { count: count ?? 0 };
   }
 }

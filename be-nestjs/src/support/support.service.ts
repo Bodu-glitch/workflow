@@ -21,7 +21,6 @@ export class SupportService {
   ) {}
 
   async createTicket(dto: CreateTicketDto, user: CurrentUser) {
-    // Verify task belongs to tenant and user is assigned
     const { data: task } = await this.supabase.db
       .from('tasks')
       .select('id, title, status, location_name')
@@ -40,7 +39,6 @@ export class SupportService {
 
     if (!assignment) throw new ForbiddenException({ code: 'NOT_ASSIGNEE', message: 'You are not assigned to this task' });
 
-    // Create ticket
     const { data: ticket, error: ticketError } = await this.supabase.db
       .from('support_tickets')
       .insert({
@@ -54,7 +52,6 @@ export class SupportService {
 
     if (ticketError) throw new BadRequestException(ticketError.message);
 
-    // Post task_card message to chat (content = staff description)
     const { data: chatMsg, error: msgError } = await this.supabase.db
       .from('chat_messages')
       .insert({
@@ -99,7 +96,6 @@ export class SupportService {
 
     if (!ticket) throw new NotFoundException({ code: 'TICKET_NOT_FOUND', message: 'Ticket not found' });
 
-    // Staff can only view own tickets; BO/OT can view any
     if (user.role === 'staff' && ticket.created_by !== user.id) {
       throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Access denied' });
     }
@@ -125,7 +121,6 @@ export class SupportService {
 
     if (!ticket) throw new NotFoundException({ code: 'TICKET_NOT_FOUND', message: 'Ticket not found' });
 
-    // Insert reply as chat message with ticket_id
     const { data: message, error: msgError } = await this.supabase.db
       .from('chat_messages')
       .insert({
@@ -141,7 +136,6 @@ export class SupportService {
     if (msgError) throw new BadRequestException(msgError.message);
     if (message) this.gateway.emitStaffChatMessage(user.tenant_id, message);
 
-    // Update ticket status to in_progress if still open
     if (ticket.status === 'open') {
       await this.supabase.db
         .from('support_tickets')
@@ -149,7 +143,6 @@ export class SupportService {
         .eq('id', ticketId);
     }
 
-    // Notify staff who created the ticket
     const taskTitle = (ticket.tasks as any)?.title ?? 'task';
     void this.notifications.sendPushNotification({
       user_ids: [ticket.created_by],

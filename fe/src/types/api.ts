@@ -189,6 +189,7 @@ export interface Notification {
   title: string;
   body: string;
   task_id: string | null;
+  request_id: string | null;
   is_read: boolean;
   data: Record<string, unknown>;
   created_at: string;
@@ -220,6 +221,14 @@ export interface TenantInfo {
   id: string;
   name: string;
   slug: string;
+}
+
+// ─── Tenant Services ────────────────────────────────────────────────────────────
+
+export interface TenantService {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export interface WorkspaceProfile {
@@ -282,14 +291,6 @@ export interface ServiceCategory {
   icon_url?: string;
   sort_order: number;
   is_active: boolean;
-}
-
-// ─── Tenant Services ────────────────────────────────────────────────────────────
-
-export interface TenantService {
-  id: string;
-  name: string;
-  created_at: string;
 }
 
 // ─── Auth (extended) ──────────────────────────────────────────────────────────
