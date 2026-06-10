@@ -188,7 +188,6 @@ export default function SearchScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.filterRow}
-        style={styles.chipScroll}
       >
         <TouchableOpacity
           style={[styles.catChip, !activeCategory && styles.catChipActive]}
@@ -214,7 +213,6 @@ export default function SearchScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.filterRow}
-        style={styles.chipScroll}
       >
         {/* GPS Near Me chip */}
         <TouchableOpacity
@@ -292,14 +290,13 @@ const styles = StyleSheet.create({
   },
   searchIcon: { fontSize: 16, marginRight: 8 },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.text },
-  chipScroll: { height: 46, flexShrink: 0 },
-  filterRow: { flexDirection: 'row', paddingLeft: 16, paddingRight: 4, paddingTop: 4, paddingBottom: 4 },
-  catChip: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.border, marginRight: 8 },
+  filterRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 16, paddingRight: 4, paddingTop: 6, paddingBottom: 6 },
+  catChip: { alignSelf: 'flex-start', flexShrink: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.border, marginRight: 8 },
   catChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  catText: { fontSize: 12, fontWeight: '600', color: COLORS.text, flexShrink: 0 },
+  catText: { fontSize: 12, fontWeight: '600', color: COLORS.text },
   catTextActive: { color: '#fff' },
   filterChip: {
-    flexShrink: 0, flexDirection: 'row', alignItems: 'center',
+    alignSelf: 'flex-start', flexShrink: 0, flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
     backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.border, marginRight: 8,
   },
