@@ -85,14 +85,15 @@ export const workspaceApi = {
 
   /** GET /workspace/commission — BO + OT */
   getCommissionConfig: () =>
-    apiFetch<{ platform_pct: number; tenant_pct: number; staff_pct: number }>('/workspace/commission'),
+    apiFetch<{ data: { platform_pct: number; tenant_pct: number; staff_pct: number } }>('/workspace/commission')
+      .then(r => r.data),
 
   /** PATCH /workspace/commission — BO only */
   updateCommissionConfig: (config: { platform_pct: number; tenant_pct: number; staff_pct: number }) =>
-    apiFetch<{ platform_pct: number; tenant_pct: number; staff_pct: number }>('/workspace/commission', {
+    apiFetch<{ data: { platform_pct: number; tenant_pct: number; staff_pct: number } }>('/workspace/commission', {
       method: 'PATCH',
       body: JSON.stringify(config),
-    }),
+    }).then(r => r.data),
 
   /** POST /workspace/logo — BO only */
   updateLogo: async (file: { uri: string; name: string; type: string }): Promise<{ data: { id: string; logo_url: string } }> => {

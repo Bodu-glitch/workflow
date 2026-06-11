@@ -83,17 +83,14 @@ export class VouchersController {
     return this.vouchersService.deleteVoucher(id, user.tenant_id);
   }
 
-  @Get(':id/stats')
-  getStats(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
-    return this.service.getStats(id, user);
-  }
-
   @Post(':id/notify')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('business_owner', 'operator')
   notifyCustomers(
     @Param('id') id: string,
     @Body() body: { message?: string },
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.service.notifyCustomers(id, body.message, user);
+    return this.vouchersService.notifyCustomers(id, body.message, user);
   }
 }

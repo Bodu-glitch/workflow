@@ -321,6 +321,12 @@ export default function NewRequestScreen() {
       } finally {
         setLoadingVouchers(false);
       }
+    } catch (e: any) {
+      Alert.alert('Lỗi', e.message ?? 'Không thể chọn nhà cung cấp.');
+    } finally {
+      setSelectingTenant(false);
+    }
+  }
 
   async function handleApplyVoucher() {
     if (!voucherCode.trim() || !selectedTenantId) return;

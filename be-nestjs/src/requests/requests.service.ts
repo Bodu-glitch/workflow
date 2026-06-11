@@ -747,12 +747,14 @@ export class RequestsService {
 
     if (error) throw new BadRequestException(error.message);
 
-    await this.supabase.db.from('audit_logs').insert({
-      request_id: requestId,
-      user_id: user.id,
-      action: 'bill_overridden',
-      metadata: { agreed_price: dto.agreed_price, note: dto.override_note ?? null },
-    }).catch(() => {});
+    void (async () => {
+      await this.supabase.db.from('audit_logs').insert({
+        request_id: requestId,
+        user_id: user.id,
+        action: 'bill_overridden',
+        metadata: { agreed_price: dto.agreed_price, note: dto.override_note ?? null },
+      });
+    })().catch(() => {});
 
     return data;
   }

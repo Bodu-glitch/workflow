@@ -241,14 +241,14 @@ export class VouchersService {
 
   async getStats(voucherId: string, user: CurrentUser) {
     const { data: voucher } = await this.supabase.db
-      .from('vouchers').select('id, tenant_id, code, name, used_count').eq('id', voucherId).single();
+      .from('vouchers').select('id, tenant_id, code, name, usage_count').eq('id', voucherId).single();
     if (!voucher) throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Voucher not found' });
     if (voucher.tenant_id !== user.tenant_id) throw new ForbiddenException();
 
     const { data: usages } = await this.supabase.db
       .from('service_requests')
       .select('discount_amount')
-      .eq('voucher_id', voucherId)
+      .eq('applied_voucher_id', voucherId)
       .not('discount_amount', 'is', null);
 
     const total_discount = (usages ?? []).reduce((s: number, r: any) => s + Number(r.discount_amount || 0), 0);
@@ -257,7 +257,7 @@ export class VouchersService {
       voucher_id: voucherId,
       code: voucher.code,
       name: voucher.name,
-      used_count: voucher.used_count,
+      used_count: voucher.usage_count,
       total_discount_given: Math.round(total_discount),
     };
   }

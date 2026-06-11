@@ -1,119 +1,457 @@
-import { Alert, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { Alert, Platform, ActivityIndicator, Modal, RefreshControl, Switch } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { View, Text, Pressable, ScrollView } from '@/tw';
-import { vouchersApi, type Voucher } from '@/lib/api/vouchers';
+import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
+import { vouchersApi, Voucher, CreateVoucherInput } from '@/lib/api/vouchers';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
-import { ApiError } from '@/lib/api/client';
 
-function fmt(n: number | null | undefined) {
-  if (n == null) return null;
-  return Number(n).toLocaleString('vi-VN') + '₫';
+function VoucherStatsRow({ voucherId }: { voucherId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['voucher-stats', voucherId],
+    queryFn: () => vouchersApi.getStats(voucherId),
+    enabled: expanded,
+  });
+  return (
+    <View>
+      <Pressable onPress={() => setExpanded(v => !v)} className="py-1.5 flex-row items-center gap-1">
+        <Text className="text-xs text-primary font-semibold">{expanded ? '▲' : '▼'} Thống kê</Text>
+      </Pressable>
+      {expanded && (
+        <View className="bg-surface-container rounded-xl px-3 py-3 mt-1 gap-2">
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#1E40AF" />
+          ) : isError ? (
+            <Text className="text-xs text-error">Không tải được thống kê</Text>
+          ) : data ? (
+            <View className="flex-row gap-6">
+              <View>
+                <Text className="text-[10px] text-on-surface-variant">Đã dùng</Text>
+                <Text className="text-sm font-bold text-on-surface">{data.used_count} lần</Text>
+              </View>
+              <View>
+                <Text className="text-[10px] text-on-surface-variant">Tổng giảm giá</Text>
+                <Text className="text-sm font-bold text-primary">{(data.total_discount_given ?? 0).toLocaleString('vi-VN')}₫</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
 }
 
-function VoucherCard({ item, onToggle }: { item: Voucher; onToggle: () => void }) {
-  const isExpired = item.ends_at && new Date(item.ends_at) < new Date();
-  const valueDisplay = item.type === 'percent'
-    ? `${item.value}% off${item.max_discount != null ? ` (tối đa ${fmt(item.max_discount)})` : ''}`
-    : `Giảm ${fmt(item.value)}`;
-  const statusColor = !item.is_active || isExpired ? '#9CA3AF' : '#10B981';
-  const statusLabel = !item.is_active ? 'Vô hiệu' : isExpired ? 'Hết hạn' : 'Đang hoạt động';
+function NotifyModal({
+  visible,
+  voucherId,
+  voucherCode,
+  onClose,
+}: {
+  visible: boolean;
+  voucherId: string;
+  voucherCode: string;
+  onClose: () => void;
+}) {
+  const [message, setMessage] = useState('');
+  const notifyMutation = useMutation({
+    mutationFn: () => vouchersApi.notify(voucherId, message.trim() || undefined),
+    onSuccess: (res) => {
+      Alert.alert('Đã gửi', `Thông báo đã được gửi đến ${res.sent} khách hàng.`);
+      onClose();
+      setMessage('');
+    },
+    onError: (e: any) => Alert.alert('Lỗi', e?.message ?? 'Không thể gửi thông báo'),
+  });
 
   return (
-    <View className="bg-surface-container-lowest rounded-xl p-4 mb-3">
-      <View className="flex-row items-start justify-between mb-2">
-        <View className="flex-1">
-          <View className="flex-row items-center gap-2">
-            <View className="bg-primary px-3 py-1 rounded-lg">
-              <Text className="text-white font-extrabold text-sm tracking-wide">{item.code}</Text>
-            </View>
-            <View style={{ backgroundColor: statusColor + '20', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>{statusLabel}</Text>
-            </View>
-          </View>
-          <Text className="text-base font-bold text-on-surface mt-2">{valueDisplay}</Text>
-          {item.min_order_value != null && item.min_order_value > 0 && (
-            <Text className="text-xs text-on-surface-variant">Đơn tối thiểu: {fmt(item.min_order_value)}</Text>
-          )}
-          {item.category && (
-            <Text className="text-xs text-on-surface-variant">Danh mục: {item.category.name}</Text>
-          )}
-          <View className="flex-row gap-3 mt-1">
-            <Text className="text-xs text-on-surface-variant">
-              Đã dùng: {item.usage_count}{item.usage_limit != null ? `/${item.usage_limit}` : ''}
-            </Text>
-            {item.ends_at && (
-              <Text className="text-xs text-on-surface-variant">
-                HSD: {new Date(item.ends_at).toLocaleDateString('vi-VN')}
-              </Text>
-            )}
-          </View>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View className="flex-1 bg-surface">
+        <View className="flex-row items-center justify-between px-5 pt-14 pb-4 border-b border-outline/20">
+          <Pressable onPress={onClose} className="p-2 -ml-2">
+            <Text className="text-base text-on-surface-variant">Hủy</Text>
+          </Pressable>
+          <Text className="text-base font-bold text-on-surface">Gửi voucher cho khách</Text>
+          <Pressable onPress={() => notifyMutation.mutate()} disabled={notifyMutation.isPending} className="p-2 -mr-2">
+            {notifyMutation.isPending
+              ? <ActivityIndicator size="small" color="#1E40AF" />
+              : <Text className="text-base font-bold text-primary">Gửi</Text>
+            }
+          </Pressable>
         </View>
-        <Pressable
-          onPress={onToggle}
-          className={`ml-3 px-3 py-2 rounded-xl active:opacity-70 ${item.is_active ? 'bg-error-container' : 'bg-success/20'}`}
-        >
-          <Text className={`text-xs font-bold ${item.is_active ? 'text-on-error-container' : 'text-success'}`}>
-            {item.is_active ? 'Tắt' : 'Bật'}
-          </Text>
-        </Pressable>
+        <ScrollView className="flex-1 px-5 pt-6" keyboardShouldPersistTaps="handled">
+          <View className="bg-primary/10 rounded-xl px-4 py-3 mb-5">
+            <Text className="text-xs text-primary font-semibold">Voucher: {voucherCode}</Text>
+            <Text className="text-xs text-on-surface-variant mt-1">Hệ thống sẽ gửi thông báo đến tất cả khách hàng đã từng đặt dịch vụ từ workspace này.</Text>
+          </View>
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">Tin nhắn tùy chọn</Text>
+          <TextInput
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface text-sm"
+            value={message}
+            onChangeText={setMessage}
+            placeholder="VD: Dùng ngay hôm nay để nhận ưu đãi đặc biệt!"
+            placeholderTextColor="#9CA3AF"
+            multiline
+            numberOfLines={4}
+            style={{ textAlignVertical: 'top', minHeight: 100 }}
+          />
+          <Text className="text-xs text-on-surface-variant mt-2">Để trống để dùng tin nhắn mặc định từ hệ thống.</Text>
+          <View className="h-20" />
+        </ScrollView>
       </View>
+    </Modal>
+  );
+}
+
+interface VoucherForm {
+  code: string;
+  name: string;
+  type: 'percentage' | 'fixed';
+  value: string;
+  min_order_amount: string;
+  max_discount: string;
+  usage_limit: string;
+  start_date: string;
+  end_date: string;
+}
+
+const EMPTY_FORM: VoucherForm = {
+  code: '',
+  name: '',
+  type: 'fixed',
+  value: '',
+  min_order_amount: '',
+  max_discount: '',
+  usage_limit: '',
+  start_date: '',
+  end_date: '',
+};
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('vi-VN');
+}
+
+function DatePickerButton({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [showPicker, setShowPicker] = useState(false);
+  const dateValue = value ? new Date(value) : new Date();
+
+  if (Platform.OS === 'web') {
+    return (
+      <View className="flex-1">
+        <Text className="text-sm font-semibold text-on-surface-variant mb-2">{label}</Text>
+        <View className="bg-surface-container-highest rounded-xl px-4" style={{ height: 48, justifyContent: 'center' }}>
+          <input
+            type="date"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: value ? '#0d1c2e' : '#9CA3AF', width: '100%', cursor: 'pointer' }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View className="flex-1">
+      <Text className="text-sm font-semibold text-on-surface-variant mb-2">{label}</Text>
+      <Pressable
+        onPress={() => setShowPicker(true)}
+        className="bg-surface-container-highest rounded-xl px-4 active:opacity-70"
+        style={{ height: 48, justifyContent: 'center' }}
+      >
+        <Text className={value ? 'text-on-surface' : 'text-on-surface-variant'}>
+          {value ? formatDate(value) : 'Chọn ngày...'}
+        </Text>
+      </Pressable>
+      {showPicker && (
+        <DateTimePicker
+          value={dateValue}
+          mode="date"
+          display="default"
+          onChange={(_, d) => {
+            setShowPicker(false);
+            if (d) {
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              onChange(`${y}-${m}-${day}`);
+            }
+          }}
+        />
+      )}
     </View>
+  );
+}
+
+function VoucherFormModal({
+  visible,
+  editing,
+  onClose,
+  onSubmit,
+  isSubmitting,
+}: {
+  visible: boolean;
+  editing: Voucher | null;
+  onClose: () => void;
+  onSubmit: (form: VoucherForm) => void;
+  isSubmitting: boolean;
+}) {
+  const [form, setForm] = useState<VoucherForm>(EMPTY_FORM);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (!editing) {
+      setForm(EMPTY_FORM);
+    } else {
+      setForm({
+        code: editing.code,
+        name: editing.name,
+        type: editing.type,
+        value: String(editing.value),
+        min_order_amount: editing.min_order_amount != null ? String(editing.min_order_amount) : '',
+        max_discount: editing.max_discount != null ? String(editing.max_discount) : '',
+        usage_limit: editing.usage_limit != null ? String(editing.usage_limit) : '',
+        start_date: editing.start_date ? editing.start_date.split('T')[0] : '',
+        end_date: editing.end_date ? editing.end_date.split('T')[0] : '',
+      });
+    }
+  }, [editing, visible]);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View className="flex-1 bg-surface">
+        <View className="flex-row items-center justify-between px-5 pt-14 pb-4 border-b border-outline/20">
+          <Pressable onPress={onClose} className="p-2 -ml-2">
+            <Text className="text-base text-on-surface-variant">Cancel</Text>
+          </Pressable>
+          <Text className="text-base font-bold text-on-surface">
+            {editing ? 'Edit Voucher' : 'Create Voucher'}
+          </Text>
+          <Pressable onPress={() => onSubmit(form)} disabled={isSubmitting} className="p-2 -mr-2">
+            {isSubmitting
+              ? <ActivityIndicator size="small" color="#1E40AF" />
+              : <Text className="text-base font-bold text-primary">Save</Text>
+            }
+          </Pressable>
+        </View>
+
+        <ScrollView className="flex-1 px-5 pt-6" keyboardShouldPersistTaps="handled">
+          {/* Code */}
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">Voucher Code *</Text>
+          <TextInput
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-4 font-mono"
+            value={form.code}
+            onChangeText={v => setForm(f => ({ ...f, code: v.toUpperCase().replace(/\s/g, '') }))}
+            placeholder="e.g. SUMMER20"
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="characters"
+            editable={!editing}
+          />
+
+          {/* Name */}
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">Name *</Text>
+          <TextInput
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-4"
+            value={form.name}
+            onChangeText={v => setForm(f => ({ ...f, name: v }))}
+            placeholder="e.g. Summer Discount 20%"
+            placeholderTextColor="#9CA3AF"
+          />
+
+          {/* Discount type */}
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">Discount Type</Text>
+          <View className="flex-row gap-3 mb-4">
+            {(['fixed', 'percentage'] as const).map(type => (
+              <Pressable
+                key={type}
+                onPress={() => setForm(f => ({ ...f, type }))}
+                className={`flex-1 py-2.5 rounded-xl items-center ${form.type === type ? 'bg-primary' : 'bg-surface-container-highest'}`}
+              >
+                <Text className={`text-sm font-semibold ${form.type === type ? 'text-white' : 'text-on-surface'}`}>
+                  {type === 'fixed' ? 'Fixed (₫)' : 'Percentage (%)'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Value */}
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">
+            Discount {form.type === 'percentage' ? 'Percent (%)' : 'Amount (₫)'} *
+          </Text>
+          <TextInput
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-4"
+            value={form.value}
+            onChangeText={v => setForm(f => ({ ...f, value: v.replace(/[^0-9]/g, '') }))}
+            placeholder={form.type === 'percentage' ? 'e.g. 20' : 'e.g. 50000'}
+            placeholderTextColor="#9CA3AF"
+            keyboardType="numeric"
+          />
+
+          {/* Min order */}
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">Min Order Amount (₫)</Text>
+          <TextInput
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-4"
+            value={form.min_order_amount}
+            onChangeText={v => setForm(f => ({ ...f, min_order_amount: v.replace(/[^0-9]/g, '') }))}
+            placeholder="Optional"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="numeric"
+          />
+
+          {/* Max discount (for percentage type) */}
+          {form.type === 'percentage' && (
+            <>
+              <Text className="text-sm font-semibold text-on-surface-variant mb-2">Max Discount (₫)</Text>
+              <TextInput
+                className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-4"
+                value={form.max_discount}
+                onChangeText={v => setForm(f => ({ ...f, max_discount: v.replace(/[^0-9]/g, '') }))}
+                placeholder="Optional cap"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="numeric"
+              />
+            </>
+          )}
+
+          {/* Usage limit */}
+          <Text className="text-sm font-semibold text-on-surface-variant mb-2">Usage Limit</Text>
+          <TextInput
+            className="bg-surface-container-highest rounded-xl px-4 py-3 text-on-surface mb-4"
+            value={form.usage_limit}
+            onChangeText={v => setForm(f => ({ ...f, usage_limit: v.replace(/[^0-9]/g, '') }))}
+            placeholder="Unlimited if empty"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="numeric"
+          />
+
+          {/* Date range */}
+          <View className="flex-row gap-3 mb-6">
+            <DatePickerButton
+              label="Ngày bắt đầu"
+              value={form.start_date}
+              onChange={v => setForm(f => ({ ...f, start_date: v }))}
+            />
+            <DatePickerButton
+              label="Ngày kết thúc"
+              value={form.end_date}
+              onChange={v => setForm(f => ({ ...f, end_date: v }))}
+            />
+          </View>
+
+          <View className="h-8" />
+        </ScrollView>
+      </View>
+    </Modal>
   );
 }
 
 export default function VouchersScreen() {
   const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<Voucher | null>(null);
+  const [notifyVoucher, setNotifyVoucher] = useState<Voucher | null>(null);
 
-  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
+  const { data: vouchers, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['vouchers'],
     queryFn: () => vouchersApi.list(),
-    select: (d) => d.data,
+    select: d => d.data,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (form: VoucherForm) => vouchersApi.create({
+      code: form.code,
+      name: form.name,
+      type: form.type,
+      value: Number(form.value),
+      ...(form.min_order_amount ? { min_order_amount: Number(form.min_order_amount) } : {}),
+      ...(form.max_discount ? { max_discount: Number(form.max_discount) } : {}),
+      ...(form.usage_limit ? { usage_limit: Number(form.usage_limit) } : {}),
+      ...(form.start_date ? { start_date: form.start_date } : {}),
+      ...(form.end_date ? { end_date: form.end_date } : {}),
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vouchers'] }); setShowModal(false); setEditing(null); },
+    onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to create voucher'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, form }: { id: string; form: VoucherForm }) => vouchersApi.update(id, {
+      name: form.name,
+      type: form.type,
+      value: Number(form.value),
+      min_order_amount: form.min_order_amount ? Number(form.min_order_amount) : undefined,
+      max_discount: form.max_discount ? Number(form.max_discount) : undefined,
+      usage_limit: form.usage_limit ? Number(form.usage_limit) : undefined,
+      start_date: form.start_date || undefined,
+      end_date: form.end_date || undefined,
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['vouchers'] }); setShowModal(false); setEditing(null); },
+    onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to update voucher'),
   });
 
   const toggleMutation = useMutation({
-    mutationFn: (voucher: Voucher) =>
-      vouchersApi.update(voucher.id, { is_active: !voucher.is_active }),
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      vouchersApi.update(id, { is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vouchers'] }),
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Thất bại'),
+    onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to update voucher'),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => vouchersApi.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vouchers'] }),
+    onError: (e: any) => Alert.alert('Error', e?.message ?? 'Failed to delete voucher'),
+  });
+
+  const handleSubmit = (form: VoucherForm) => {
+    if (!form.code) return Alert.alert('Validation', 'Voucher code is required');
+    if (!form.name) return Alert.alert('Validation', 'Name is required');
+    if (!form.value) return Alert.alert('Validation', 'Discount value is required');
+    if (form.type === 'percentage' && Number(form.value) > 100) {
+      return Alert.alert('Validation', 'Percentage cannot exceed 100%');
+    }
+    if (editing) {
+      updateMutation.mutate({ id: editing.id, form });
+    } else {
+      createMutation.mutate(form);
+    }
+  };
+
+  const handleDelete = (v: Voucher) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Xóa voucher "${v.code}"?`)) deleteMutation.mutate(v.id);
+      return;
+    }
+    Alert.alert('Delete Voucher', `Deactivate "${v.code}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate(v.id) },
+    ]);
+  };
 
   if (isLoading) return <LoadingScreen />;
   if (isError) return <ErrorView onRetry={refetch} />;
 
-  const vouchers = data ?? [];
-  const active = vouchers.filter(v => v.is_active && !(v.ends_at && new Date(v.ends_at) < new Date()));
-  const inactive = vouchers.filter(v => !v.is_active || (v.ends_at && new Date(v.ends_at) < new Date()));
+  const items = vouchers ?? [];
 
   return (
     <View className="flex-1 bg-surface">
-      <View className="glass-effect px-5 pt-14 pb-4">
+      <View className="glass-effect px-5 pt-14 pb-4 border-b border-outline/20">
         <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => router.back()} className="active:opacity-60">
-              <Text className="text-primary font-semibold">← Quay lại</Text>
-            </Pressable>
-            <Text className="text-2xl font-extrabold text-on-surface tracking-tight">Voucher</Text>
-          </View>
+          <Text className="text-2xl font-extrabold text-on-surface tracking-tight">Vouchers</Text>
           <Pressable
-            onPress={() => router.push('/(bo)/vouchers/create')}
-            className="bg-primary px-4 py-2 rounded-xl active:opacity-70"
+            onPress={() => { setEditing(null); setShowModal(true); }}
+            className="bg-primary rounded-xl px-4 py-2"
           >
-            <Text className="text-white text-sm font-bold">+ Tạo</Text>
+            <Text className="text-sm font-bold text-white">+ Create</Text>
           </Pressable>
-        </View>
-
-        {/* Stats */}
-        <View className="flex-row gap-3 mt-3">
-          <View className="flex-1 bg-success/10 rounded-xl px-3 py-2">
-            <Text className="text-xs text-on-surface-variant">Đang hoạt động</Text>
-            <Text className="text-xl font-extrabold text-success">{active.length}</Text>
-          </View>
-          <View className="flex-1 bg-surface-container-high rounded-xl px-3 py-2">
-            <Text className="text-xs text-on-surface-variant">Vô hiệu / Hết hạn</Text>
-            <Text className="text-xl font-extrabold text-on-surface-variant">{inactive.length}</Text>
-          </View>
         </View>
       </View>
 
@@ -121,51 +459,111 @@ export default function VouchersScreen() {
         className="flex-1 px-4 pt-4"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
       >
-        {vouchers.length === 0 ? (
+        {items.length === 0 ? (
           <View className="items-center justify-center py-20 gap-3">
             <Text className="text-4xl">🎟️</Text>
-            <Text className="text-sm text-on-surface-variant">Chưa có voucher nào</Text>
-            <Pressable
-              onPress={() => router.push('/(bo)/vouchers/create')}
-              className="bg-primary px-6 py-3 rounded-xl active:opacity-70 mt-2"
-            >
-              <Text className="text-white font-bold">Tạo voucher đầu tiên</Text>
+            <Text className="text-sm text-on-surface-variant">No vouchers yet</Text>
+            <Pressable onPress={() => { setEditing(null); setShowModal(true); }} className="bg-primary rounded-xl px-5 py-2.5 mt-2">
+              <Text className="text-sm font-bold text-white">Create first voucher</Text>
             </Pressable>
           </View>
         ) : (
-          <>
-            {active.length > 0 && (
-              <>
-                <Text className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">
-                  Đang hoạt động ({active.length})
-                </Text>
-                {active.map(v => (
-                  <VoucherCard
-                    key={v.id}
-                    item={v}
-                    onToggle={() => toggleMutation.mutate(v)}
+          items.map(v => (
+            <View key={v.id} className="bg-surface-container-lowest rounded-xl p-4 mb-3">
+              <View className="flex-row items-start justify-between mb-2">
+                <View className="flex-1">
+                  <View className="flex-row items-center gap-2 mb-1">
+                    <View className="bg-primary/10 rounded-lg px-3 py-1">
+                      <Text className="text-sm font-bold text-primary font-mono">{v.code}</Text>
+                    </View>
+                    {!v.is_active && (
+                      <View className="bg-error/10 rounded-lg px-2 py-1">
+                        <Text className="text-xs font-semibold text-error">Inactive</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-sm text-on-surface">{v.name}</Text>
+                </View>
+                <View className="items-end gap-1">
+                  <Text className="text-base font-extrabold text-primary">
+                    {v.type === 'percentage' ? `${v.value}%` : `${v.value.toLocaleString('vi-VN')}₫`}
+                  </Text>
+                  <Text className="text-xs text-on-surface-variant">
+                    {v.used_count}{v.usage_limit != null ? `/${v.usage_limit}` : ''} used
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row flex-wrap gap-3 mt-2">
+                {v.min_order_amount != null && (
+                  <Text className="text-xs text-on-surface-variant">
+                    Min: {v.min_order_amount.toLocaleString('vi-VN')}₫
+                  </Text>
+                )}
+                {v.max_discount != null && v.type === 'percentage' && (
+                  <Text className="text-xs text-on-surface-variant">
+                    Max: {v.max_discount.toLocaleString('vi-VN')}₫
+                  </Text>
+                )}
+                {v.start_date && <Text className="text-xs text-on-surface-variant">From {formatDate(v.start_date)}</Text>}
+                {v.end_date && <Text className="text-xs text-on-surface-variant">To {formatDate(v.end_date)}</Text>}
+              </View>
+
+              <VoucherStatsRow voucherId={v.id} />
+
+              <View className="flex-row items-center justify-between mt-2 pt-3 border-t border-outline/10">
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-xs text-on-surface-variant">Active</Text>
+                  <Switch
+                    value={v.is_active}
+                    onValueChange={val => toggleMutation.mutate({ id: v.id, is_active: val })}
+                    trackColor={{ false: '#d1d5db', true: '#1E40AF' }}
+                    thumbColor="#ffffff"
                   />
-                ))}
-              </>
-            )}
-            {inactive.length > 0 && (
-              <>
-                <Text className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3 mt-4">
-                  Vô hiệu / Hết hạn ({inactive.length})
-                </Text>
-                {inactive.map(v => (
-                  <VoucherCard
-                    key={v.id}
-                    item={v}
-                    onToggle={() => toggleMutation.mutate(v)}
-                  />
-                ))}
-              </>
-            )}
-          </>
+                </View>
+                <View className="flex-row gap-2">
+                  <Pressable
+                    onPress={() => setNotifyVoucher(v)}
+                    className="bg-primary/10 rounded-lg px-3 py-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-primary">📣 Gửi</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => { setEditing(v); setShowModal(true); }}
+                    className="bg-surface-container-high rounded-lg px-3 py-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-on-surface">Edit</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleDelete(v)}
+                    className="bg-error/10 rounded-lg px-3 py-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-error">Del</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ))
         )}
         <View className="h-8" />
       </ScrollView>
+
+      <VoucherFormModal
+        visible={showModal}
+        editing={editing}
+        onClose={() => { setShowModal(false); setEditing(null); }}
+        onSubmit={handleSubmit}
+        isSubmitting={createMutation.isPending || updateMutation.isPending}
+      />
+
+      {notifyVoucher && (
+        <NotifyModal
+          visible={!!notifyVoucher}
+          voucherId={notifyVoucher.id}
+          voucherCode={notifyVoucher.code}
+          onClose={() => setNotifyVoucher(null)}
+        />
+      )}
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { SupportService } from './support.service.js';
 import { CreateTicketDto } from './dto/create-ticket.dto.js';
 import { ReplyTicketDto } from './dto/reply-ticket.dto.js';
@@ -22,6 +22,21 @@ export class SupportController {
   @Get('tickets/mine')
   getMyTickets(@CurrentUser() user: any) {
     return this.service.getMyTickets(user);
+  }
+
+  /** GET /support/tickets/pending — BO/OT xem ticket chờ xử lý */
+  @Get('tickets/pending')
+  @UseGuards(RolesGuard)
+  @Roles('business_owner', 'operator')
+  listPendingTickets(
+    @CurrentUser() user: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.listPendingTickets(user, {
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 20,
+    });
   }
 
   /** GET /support/tickets — BO/OT xem tất cả ticket của tenant */

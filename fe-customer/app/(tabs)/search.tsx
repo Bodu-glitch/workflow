@@ -144,7 +144,7 @@ export default function SearchScreen() {
       setTotal(res.meta?.total ?? items.length);
       setHasMore(items.length === 20);
     } catch {
-      // silent
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
