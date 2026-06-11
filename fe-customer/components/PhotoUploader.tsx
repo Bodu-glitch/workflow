@@ -41,28 +41,27 @@ export function PhotoUploader({ photos, onAdd, onRemove, maxPhotos = 5 }: Props)
             </div>
           ))}
           {photos.length < maxPhotos && (
-            // Overlay technique: transparent <input type="file"> sits on top of the
-            // visible button. User clicks directly on the input → always a trusted
-            // event → browser opens file dialog. No JS .click() or label needed.
             <div style={{ position: 'relative', width: 90, height: 90, flexShrink: 0 } as any}>
+              {/* Visual — pointer-events none so clicks fall through to the input */}
               <div style={{
-                width: 90, height: 90, borderRadius: 10,
+                width: '100%', height: '100%', borderRadius: 10,
                 border: `2px dashed ${COLORS.border}`,
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
-                gap: 4, backgroundColor: COLORS.surface,
+                gap: 4, backgroundColor: COLORS.surface, pointerEvents: 'none',
               } as any}>
                 <span style={{ fontSize: 24 }}>📷</span>
                 <span style={{ fontSize: 10, color: COLORS.textSecondary, fontWeight: '500' }}>Thêm ảnh</span>
               </div>
+              {/* Input is the actual click target — stopPropagation on touchstart so RN ScrollView doesn't swallow the event */}
               <input
                 type="file"
                 accept="image/*"
                 onChange={handleFileChange}
+                onTouchStart={(e: any) => e.stopPropagation()}
                 style={{
-                  position: 'absolute', top: 0, left: 0,
-                  width: '100%', height: '100%',
-                  opacity: 0, cursor: 'pointer',
+                  position: 'absolute', inset: 0, opacity: 0,
+                  width: '100%', height: '100%', cursor: 'pointer',
                 } as any}
               />
             </div>

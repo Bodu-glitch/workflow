@@ -3,11 +3,10 @@ import { apiFetch } from './client';
 export interface SupportMessage {
   id: string;
   ticket_id: string;
-  sender_id: string;
+  user_id: string;
   content: string;
-  is_operator: boolean;
   created_at: string;
-  sender?: { id: string; full_name: string; avatar_url?: string | null } | null;
+  users?: { id: string; full_name: string; avatar_url?: string | null } | null;
 }
 
 export interface SupportTicket {
@@ -48,7 +47,7 @@ export const supportApi = {
 
   /** Get messages for a ticket */
   getMessages: (ticketId: string, page = 1, limit = 50) =>
-    apiFetch<SupportMessage[]>(
+    apiFetch<{ data: SupportMessage[] }>(
       `/support/tickets/${ticketId}/messages?page=${page}&limit=${limit}`,
     ),
 
@@ -57,7 +56,7 @@ export const supportApi = {
 
   /** Send a message to a ticket */
   sendMessage: (ticketId: string, content: string) =>
-    apiFetch<SupportMessage>(`/support/tickets/${ticketId}/messages`, {
+    apiFetch<{ data: SupportMessage }>(`/support/tickets/${ticketId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ content }),
     }),

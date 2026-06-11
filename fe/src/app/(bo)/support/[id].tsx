@@ -41,7 +41,7 @@ export default function BOSupportDetailScreen() {
   });
 
   useEffect(() => {
-    if (messages) setLocalMessages(Array.isArray(messages) ? messages : (messages as any).data ?? []);
+    if (messages) setLocalMessages(messages.data ?? []);
   }, [messages]);
 
   useEffect(() => {
@@ -70,8 +70,11 @@ export default function BOSupportDetailScreen() {
   const sendMutation = useMutation({
     mutationFn: () => supportApi.sendMessage(id, content.trim()),
     onSuccess: (saved) => {
-      const msg = (saved as any)?.data ?? saved;
-      setLocalMessages((prev) => [...prev, msg as SupportMessage]);
+      const msg = saved.data;
+      setLocalMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg as SupportMessage];
+      });
       setContent('');
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
     },
@@ -98,8 +101,8 @@ export default function BOSupportDetailScreen() {
   const isResolvable = ticketData && ['open', 'in_progress'].includes(ticketData.status);
 
   const renderMessage = ({ item }: { item: SupportMessage }) => {
-    const isOwn = item.sender_id === user?.id;
-    const senderName = item.sender?.full_name ?? 'Unknown';
+    const isOwn = item.user_id === user?.id;
+    const senderName = item.users?.full_name ?? (isOwn ? 'Bạn' : 'Nhân viên');
 
     return (
       <View className={`mb-3 max-w-[80%] ${isOwn ? 'self-end' : 'self-start'}`}>

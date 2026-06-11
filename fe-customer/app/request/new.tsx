@@ -249,14 +249,17 @@ export default function NewRequestScreen() {
   }
 
   async function handleSubmitAndLoadTenants() {
-    if (!locationCoords) {
-      Alert.alert('Lỗi', 'Vui lòng chọn địa chỉ để tiếp tục.');
-      return;
-    }
     if (description.length < 10) {
       Alert.alert('Lỗi', 'Mô tả phải có ít nhất 10 ký tự.');
       return;
     }
+    if (!locationCoords && locationName.trim().length <= 5) {
+      Alert.alert('Lỗi', 'Vui lòng nhập địa chỉ dịch vụ.');
+      return;
+    }
+
+    // Fallback to HCMC center when user typed address manually without GPS
+    const coords = locationCoords ?? { lat: 10.8231, lng: 106.6297 };
 
     setSubmitting(true);
     try {
@@ -265,8 +268,8 @@ export default function NewRequestScreen() {
         ? `[${selectedProblems.join(', ')}] ${description}`
         : description;
       formData.append('description', fullDescription);
-      formData.append('location_lat', String(locationCoords.lat));
-      formData.append('location_lng', String(locationCoords.lng));
+      formData.append('location_lat', String(coords.lat));
+      formData.append('location_lng', String(coords.lng));
       if (locationName) formData.append('location_name', locationName);
       if (selectedCategoryId) formData.append('category_id', selectedCategoryId);
       if (isEmergency) formData.append('is_emergency', 'true');
@@ -391,7 +394,7 @@ export default function NewRequestScreen() {
   function canGoNext() {
     if (step === 0) return !!selectedCategoryId;
     if (step === 1) return true;
-    if (step === 2) return description.length >= 10 && !!locationCoords;
+    if (step === 2) return description.length >= 10 && (!!locationCoords || locationName.trim().length > 5);
     return false;
   }
 
@@ -578,27 +581,6 @@ export default function NewRequestScreen() {
             )}
 
 
-            <View style={styles.locationRow}>
-              <TextInput
-                style={[styles.locationInput, { flex: 1 }]}
-                placeholder="Địa chỉ của bạn..."
-                placeholderTextColor={COLORS.textSecondary}
-                value={locationName}
-                onChangeText={setLocationName}
-              />
-              <TouchableOpacity
-                style={styles.gpsBtn}
-                onPress={() => {
-                  if (location) reverseGeocode(location.latitude, location.longitude);
-                }}
-                disabled={reverseGeocoding || !location}
-              >
-                {reverseGeocoding
-                  ? <ActivityIndicator size="small" color={COLORS.primary} />
-                  : <Text style={styles.gpsBtnText}>📍</Text>
-                }
-              </TouchableOpacity>
-            </View>
             {locationError && !locationCoords && (
               <Text style={styles.locationError}>⚠️ {locationError}</Text>
             )}
