@@ -92,8 +92,8 @@ export default function SupportChatScreen() {
   if (isError) return <ErrorView onRetry={refetch} />;
 
   const renderMessage = useCallback(({ item }: { item: SupportMessage }) => {
-    const isMyMessage = item.sender_id === user?.id || (!item.is_operator && item.sender_id === user?.id);
-    const senderName = item.sender?.full_name ?? (item.is_operator ? 'Hỗ trợ' : 'Nhân viên');
+    const isMyMessage = item.user_id === user?.id;
+    const senderName = item.users?.full_name ?? (isMyMessage ? 'Bạn' : 'Hỗ trợ');
 
     return (
       <View className={`mb-3 max-w-[80%] ${isMyMessage ? 'self-end' : 'self-start'}`}>

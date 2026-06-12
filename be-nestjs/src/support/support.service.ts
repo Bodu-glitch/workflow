@@ -49,6 +49,62 @@ export class SupportService {
     return data ?? [];
   }
 
+  async getMessages(ticketId: string, user: CurrentUser) {
+    const { data: ticket } = await this.supabase.db
+      .from('support_tickets')
+      .select('id, staff_id')
+      .eq('id', ticketId)
+      .eq('tenant_id', user.tenant_id)
+      .single();
+
+    if (!ticket) throw new NotFoundException({ code: 'TICKET_NOT_FOUND', message: 'Ticket not found' });
+
+    if (user.role === 'staff' && ticket.staff_id !== user.id) {
+      throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Access denied' });
+    }
+
+    const { data, error } = await this.supabase.db
+      .from('chat_messages')
+      .select('id, content, type, created_at, user_id, users!chat_messages_user_id_fkey(id, full_name, avatar_url)')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async sendMessage(ticketId: string, content: string, user: CurrentUser) {
+    const { data: ticket } = await this.supabase.db
+      .from('support_tickets')
+      .select('id, staff_id, tenant_id, subject')
+      .eq('id', ticketId)
+      .eq('tenant_id', user.tenant_id)
+      .single();
+
+    if (!ticket) throw new NotFoundException({ code: 'TICKET_NOT_FOUND', message: 'Ticket not found' });
+
+    if (user.role === 'staff' && ticket.staff_id !== user.id) {
+      throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Access denied' });
+    }
+
+    const { data: message, error: msgError } = await this.supabase.db
+      .from('chat_messages')
+      .insert({
+        tenant_id: user.tenant_id,
+        user_id: user.id,
+        type: 'text',
+        ticket_id: ticketId,
+        content,
+      })
+      .select('id, user_id, content, type, ticket_id, created_at, users!chat_messages_user_id_fkey(id, full_name, avatar_url)')
+      .single();
+
+    if (msgError) throw new BadRequestException(msgError.message);
+    if (message) this.gateway.emitSupportMessage(ticketId, message);
+
+    return message;
+  }
+
   async getTicketReplies(ticketId: string, user: CurrentUser) {
     const { data: ticket } = await this.supabase.db
       .from('support_tickets')
@@ -97,7 +153,7 @@ export class SupportService {
       .single();
 
     if (msgError) throw new BadRequestException(msgError.message);
-    if (message) this.gateway.emitStaffChatMessage(user.tenant_id, message);
+    if (message) this.gateway.emitSupportMessage(ticketId, message);
 
     if (ticket.status === 'open') {
       await this.supabase.db

@@ -1,145 +1,253 @@
-import { useState } from 'react';
-import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { View, Text, Pressable, ScrollView } from '@/tw';
-import { technicianApi } from '@/lib/api/technician';
+import { useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FlatList, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { View, Text, Pressable } from '@/tw';
+import { meApi } from '@/lib/api/me';
+import { StatusBadge, PriorityBadge } from '@/components/ui/StatusBadge';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
-import { ApiError } from '@/lib/api/client';
+import { useAuth } from '@/context/auth';
+import { NotifBell } from '@/components/NotifBell';
+import { ChatBell } from '@/components/ChatBell';
+import type { Task } from '@/types/api';
 
-const TABS = [
-  { label: 'Công việc của tôi', key: 'my' },
-  { label: 'Pool', key: 'pool' },
+type TabKey = 'pool' | 'todo' | 'active' | 'done' | 'cancelled';
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'pool',      label: '🏊 Pool' },
+  { key: 'todo',      label: 'Mới' },
+  { key: 'active',    label: '🔧 Đang thực hiện' },
+  { key: 'done',      label: 'Hoàn thành' },
+  { key: 'cancelled', label: 'Đã hủy' },
 ];
 
-const STATUS_COLORS: Record<string, string> = {
-  assigned: '#8B5CF6',
-  in_progress: '#EF4444',
-  pending_assignment: '#F59E0B',
-  completed: '#10B981',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  assigned: 'Được phân công',
-  in_progress: 'Đang thực hiện',
-  pending_assignment: 'Chờ nhận',
-  completed: 'Hoàn thành',
-  completed_late: 'Hoàn thành (trễ)',
-};
-
-export default function StaffJobsScreen() {
-  const [activeTab, setActiveTab] = useState(0);
-  const qc = useQueryClient();
-
-  const { data: myJobs, isLoading: loadingJobs, isError: jobsError, refetch: refetchJobs, isRefetching: refetchingJobs } = useQuery({
-    queryKey: ['technician-jobs'],
-    queryFn: () => technicianApi.getJobs(),
-    select: (d) => d.data,
-    enabled: activeTab === 0,
-  });
-
-  const { data: poolJobs, isLoading: loadingPool, isError: poolError, refetch: refetchPool, isRefetching: refetchingPool } = useQuery({
-    queryKey: ['technician-pool'],
-    queryFn: () => technicianApi.getPool(),
-    select: (d) => d.data,
-    enabled: activeTab === 1,
-  });
-
-  const claimMutation = useMutation({
-    mutationFn: (id: string) => technicianApi.claimFromPool(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['technician-jobs'] });
-      qc.invalidateQueries({ queryKey: ['technician-pool'] });
-      Alert.alert('Thành công', 'Bạn đã nhận công việc!');
-      setActiveTab(0);
-    },
-    onError: (e) => Alert.alert('Lỗi', e instanceof ApiError ? e.message : 'Không thể nhận công việc'),
-  });
-
-  const isLoading = activeTab === 0 ? loadingJobs : loadingPool;
-  const isError = activeTab === 0 ? jobsError : poolError;
-  const refetch = activeTab === 0 ? refetchJobs : refetchPool;
-  const isRefetching = activeTab === 0 ? refetchingJobs : refetchingPool;
-
-  if (isLoading) return <LoadingScreen />;
-  if (isError) return <ErrorView onRetry={refetch} />;
-
-  const jobs = activeTab === 0 ? (myJobs ?? []) : (poolJobs ?? []);
+// ── Task card (my assigned tasks) ─────────────────────────────────────────────
+function TaskCard({ task }: { task: Task }) {
+  const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done';
 
   return (
-    <View className="flex-1 bg-surface">
-      <View className="glass-effect px-5 pt-14 pb-3">
-        <Text className="text-2xl font-extrabold text-on-surface tracking-tight mb-3">Công việc dịch vụ</Text>
-        <View className="flex-row gap-2">
-          {TABS.map((tab, i) => (
-            <Pressable
-              key={tab.key}
-              onPress={() => setActiveTab(i)}
-              className={`px-4 py-2 rounded-full ${activeTab === i ? 'bg-primary' : 'bg-surface-container-high'}`}
-            >
-              <Text className={`text-sm font-semibold ${activeTab === i ? 'text-white' : 'text-on-surface-variant'}`}>
-                {tab.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+    <Pressable
+      onPress={() => router.push({ pathname: '/(staff)/tasks/[id]', params: { id: task.id } })}
+      className="bg-surface-container-lowest rounded-xl p-5 mb-3 mx-4 overflow-hidden active:opacity-70"
+    >
+      <View className={`absolute left-0 top-0 bottom-0 w-1 ${isOverdue ? 'bg-warning' : 'bg-primary'}`} />
+      <View className="flex-row items-start justify-between mb-2">
+        <Text className="text-base font-bold text-on-surface flex-1 mr-3" numberOfLines={2}>
+          {task.title}
+        </Text>
+        <StatusBadge status={task.status} />
       </View>
 
-      <ScrollView
-        className="flex-1 px-4 pt-4"
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-      >
-        {jobs.length === 0 ? (
-          <View className="items-center justify-center py-20 gap-3">
-            <Text className="text-4xl">{activeTab === 0 ? '📋' : '🔍'}</Text>
-            <Text className="text-sm text-on-surface-variant">
-              {activeTab === 0 ? 'Không có công việc nào' : 'Pool trống'}
-            </Text>
+      <View className="flex-row flex-wrap gap-2 mb-2">
+        {task.priority && <PriorityBadge priority={task.priority} />}
+        {isOverdue && (
+          <View className="self-start px-2.5 py-1 rounded-full bg-warning-container">
+            <Text className="text-[10px] font-bold text-on-warning-container">⚠ QUÁ HẠN</Text>
           </View>
-        ) : (
-          jobs.map((job) => {
-            const statusColor = STATUS_COLORS[job.status] ?? '#9CA3AF';
-            const statusLabel = STATUS_LABELS[job.status] ?? job.status;
-            return (
-              <Pressable
-                key={job.id}
-                onPress={() => activeTab === 0
-                  ? router.push({ pathname: '/(staff)/jobs/[id]', params: { id: job.id } })
-                  : claimMutation.mutate(job.id)
-                }
-                className="bg-surface-container-lowest rounded-xl p-4 mb-3 active:opacity-80"
-              >
-                <View className="flex-row items-start justify-between mb-2">
-                  <View className="flex-1 gap-1">
-                    <Text className="text-xs font-bold text-primary">{job.category?.name ?? 'Dịch vụ'}</Text>
-                    <Text className="text-sm font-semibold text-on-surface" numberOfLines={2}>{job.description}</Text>
-                  </View>
-                  <View className="ml-3 items-end gap-1">
-                    <View style={{ backgroundColor: statusColor + '20', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: statusColor }}>{statusLabel}</Text>
-                    </View>
-                    {job.is_emergency && <Text className="text-xs font-bold text-error">🚨</Text>}
-                  </View>
-                </View>
-                <View className="flex-row items-center justify-between mt-1">
-                  <Text className="text-xs text-on-surface-variant">👤 {job.customer?.full_name ?? 'Khách hàng'}</Text>
-                  <Text className="text-xs text-on-surface-variant">{new Date(job.created_at).toLocaleString('vi-VN')}</Text>
-                </View>
-                {activeTab === 1 && (
-                  <View className="mt-2 pt-2 border-t border-outline/20">
-                    {claimMutation.isPending && claimMutation.variables === job.id
-                      ? <ActivityIndicator size="small" color="#1E40AF" />
-                      : <Text className="text-xs font-bold text-primary text-center">Nhấn để nhận việc</Text>
-                    }
-                  </View>
-                )}
-              </Pressable>
-            );
-          })
         )}
-        <View className="h-8" />
-      </ScrollView>
+      </View>
+
+      <View className="gap-1">
+        {task.location_name && (
+          <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {task.location_name}</Text>
+        )}
+        {task.scheduled_at && (
+          <Text className="text-xs text-on-surface-variant">
+            🕐 {new Date(task.scheduled_at).toLocaleString('vi-VN')}
+          </Text>
+        )}
+        {task.deadline && (
+          <Text className={`text-xs ${isOverdue ? 'text-warning' : 'text-on-surface-variant'}`}>
+            ⏰ {new Date(task.deadline).toLocaleString('vi-VN')}
+          </Text>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+// ── Pool task card ─────────────────────────────────────────────────────────────
+function PoolTaskCard({ task, onClaimed }: { task: Task; onClaimed: () => void }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleClaim = useCallback(async () => {
+    setLoading(true);
+    try {
+      await meApi.claimPoolTask(task.id);
+      onClaimed();
+      router.push({ pathname: '/(staff)/tasks/[id]', params: { id: task.id } });
+    } catch (err: any) {
+      const code = err?.code ?? '';
+      Alert.alert(
+        'Không thể nhận',
+        code === 'TIME_CONFLICT'
+          ? 'Thời gian nhiệm vụ này trùng với nhiệm vụ bạn đang có.'
+          : code === 'ALREADY_CLAIMED'
+          ? 'Nhiệm vụ đã được người khác nhận rồi.'
+          : 'Vui lòng thử lại.',
+      );
+      onClaimed(); // refresh list
+    } finally {
+      setLoading(false);
+    }
+  }, [task.id, onClaimed]);
+
+  return (
+    <View className="bg-surface-container-lowest rounded-xl p-5 mb-3 mx-4 overflow-hidden">
+      <View className="absolute left-0 top-0 bottom-0 w-1 bg-tertiary" />
+      <View className="flex-row items-start justify-between mb-2">
+        <Text className="text-base font-bold text-on-surface flex-1 mr-3" numberOfLines={2}>
+          {task.title}
+        </Text>
+        {task.priority && <PriorityBadge priority={task.priority} />}
+      </View>
+
+      <View className="gap-1 mb-4">
+        {task.location_name && (
+          <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {task.location_name}</Text>
+        )}
+        {task.scheduled_at && (
+          <Text className="text-xs text-on-surface-variant">
+            🕐 {new Date(task.scheduled_at).toLocaleString('vi-VN')}
+          </Text>
+        )}
+        {task.deadline && (
+          <Text className="text-xs text-on-surface-variant">
+            ⏰ {new Date(task.deadline).toLocaleString('vi-VN')}
+          </Text>
+        )}
+      </View>
+
+      <Pressable
+        onPress={handleClaim}
+        disabled={loading}
+        className="py-2.5 rounded-xl bg-primary items-center active:opacity-80"
+      >
+        {loading
+          ? <ActivityIndicator color="#fff" size="small" />
+          : <Text className="text-sm font-bold text-white">Nhận nhiệm vụ</Text>
+        }
+      </Pressable>
+    </View>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+export default function MyTaskListScreen() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [activeTab, setActiveTab] = useState<TabKey>('todo');
+
+  const isPool = activeTab === 'pool';
+  const status = isPool ? undefined : activeTab as string;
+
+  const myTasksQuery = useQuery({
+    queryKey: ['me-tasks', status],
+    queryFn: () => meApi.tasks(status),
+    enabled: !isPool,
+  });
+
+  const poolQuery = useQuery({
+    queryKey: ['pool-tasks'],
+    queryFn: () => meApi.poolTasks(),
+    enabled: isPool,
+    refetchInterval: 10_000,
+  });
+
+  const activeQuery = isPool ? poolQuery : myTasksQuery;
+  const tasks = activeQuery.data?.data ?? [];
+
+  useFocusEffect(useCallback(() => {
+    if (isPool) qc.invalidateQueries({ queryKey: ['pool-tasks'] });
+    else qc.invalidateQueries({ queryKey: ['me-tasks', status] });
+  }, [isPool, status, qc]));
+
+  const handlePoolClaimed = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['pool-tasks'] });
+  }, [qc]);
+
+  return (
+    <View className="flex-1 bg-surface-container-low">
+      {/* Header */}
+      <View className="glass-effect px-5 pt-14 pb-3">
+        <View className="flex-row items-center justify-between mb-4">
+          <Pressable
+            onPress={() => router.push('/profile')}
+            className="flex-row items-center gap-3 active:opacity-70"
+          >
+            <View className="w-10 h-10 rounded-full bg-primary items-center justify-center">
+              <Text className="text-white font-bold text-sm">
+                {user?.full_name
+                  ? user.full_name.trim().split(/\s+/).slice(-2).map((w: string) => w[0].toUpperCase()).join('')
+                  : 'S'}
+              </Text>
+            </View>
+            <View>
+              <Text className="text-[10px] font-bold uppercase tracking-widest text-primary" style={{ opacity: 0.7 }}>Nhiệm vụ</Text>
+              <Text className="text-xl font-extrabold text-on-surface tracking-tight">
+                {user?.full_name ?? 'Staff'}
+              </Text>
+            </View>
+          </Pressable>
+          <View className="flex-row items-center gap-1">
+            <ChatBell />
+            <NotifBell />
+          </View>
+        </View>
+
+        {/* Tabs */}
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={TABS}
+          keyExtractor={(item) => item.key}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => setActiveTab(item.key)}
+              className={`px-4 py-2 rounded-full mr-2 ${activeTab === item.key ? 'kinetic-gradient' : 'bg-surface-container-highest'}`}
+            >
+              <Text className={`text-xs font-bold ${activeTab === item.key ? 'text-on-primary' : 'text-on-surface-variant'}`}>
+                {item.label}
+              </Text>
+            </Pressable>
+          )}
+        />
+      </View>
+
+      {/* Content */}
+      {activeQuery.isLoading
+        ? <LoadingScreen />
+        : activeQuery.isError
+        ? <ErrorView onRetry={activeQuery.refetch} />
+        : (
+          <FlatList
+            data={tasks}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) =>
+              isPool
+                ? <PoolTaskCard task={item} onClaimed={handlePoolClaimed} />
+                : <TaskCard task={item} />
+            }
+            contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={activeQuery.isRefetching}
+                onRefresh={activeQuery.refetch}
+              />
+            }
+            ListEmptyComponent={
+              <View className="py-20 items-center gap-2">
+                <Text className="text-4xl">{isPool ? '🏊' : '✅'}</Text>
+                <Text className="text-on-surface-variant text-sm">
+                  {isPool ? 'Không có nhiệm vụ trong pool' : 'Không có nhiệm vụ nào'}
+                </Text>
+                <Text className="text-outline text-xs">Kéo xuống để làm mới</Text>
+              </View>
+            }
+          />
+        )
+      }
     </View>
   );
 }

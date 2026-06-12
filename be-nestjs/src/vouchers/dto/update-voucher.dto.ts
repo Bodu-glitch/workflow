@@ -7,8 +7,8 @@ export class UpdateVoucherDto {
   name?: string;
 
   @IsOptional()
-  @IsEnum(['percent', 'fixed'])
-  type?: 'percent' | 'fixed';
+  @IsEnum(['percent', 'fixed', 'percentage'])
+  type?: 'percent' | 'fixed' | 'percentage';
 
   @IsOptional()
   @IsNumber()
@@ -26,11 +26,7 @@ export class UpdateVoucherDto {
   @IsNumber()
   @Type(() => Number)
   @Min(0)
-  min_order_value?: number;
-
-  @IsOptional()
-  @IsString()
-  service_category_id?: string;
+  min_order_amount?: number;
 
   @IsOptional()
   @IsInt()
@@ -40,17 +36,13 @@ export class UpdateVoucherDto {
 
   @IsOptional()
   @IsBoolean()
-  is_public?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
   is_active?: boolean;
 
   @IsOptional()
   @IsDateString()
-  starts_at?: string;
+  start_date?: string;
 
   @IsOptional()
   @IsDateString()
-  ends_at?: string;
+  end_date?: string;
 }

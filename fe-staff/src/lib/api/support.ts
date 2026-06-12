@@ -14,11 +14,10 @@ export interface SupportTicket {
 export interface SupportMessage {
   id: string;
   ticket_id: string;
-  sender_id: string;
+  user_id: string;
   content: string;
-  is_operator: boolean;
   created_at: string;
-  sender?: { id: string; full_name: string; avatar_url?: string | null } | null;
+  users?: { id: string; full_name: string; avatar_url?: string | null } | null;
 }
 
 export interface TicketReply {

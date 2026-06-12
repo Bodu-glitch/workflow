@@ -428,10 +428,10 @@ export class TechnicianService {
     const { data: jobs, error } = await this.supabase.db
       .from('service_requests')
       .select(`
-        id, agreed_price, collected_amount, final_amount, discount_amount,
+        id, description, agreed_price, collected_amount, discount_amount,
         completed_at, status,
         category:category_id(id, name, slug),
-        tenant:tenant_id(id, name, commission_platform_percent, commission_staff_percent),
+        tenant:tenant_id(id, name, settings),
         ratings!left(score)
       `)
       .eq('assigned_staff_id', user.id)
@@ -444,11 +444,14 @@ export class TechnicianService {
 
     // Tính thu nhập
     const jobsWithEarnings = rows.map((job: any) => {
-      const grossAmount = job.collected_amount ?? job.final_amount ?? job.agreed_price ?? 0;
-      const staffPercent = (job.tenant?.commission_staff_percent ?? 70) / 100;
+      const grossAmount = job.collected_amount ?? job.agreed_price ?? 0;
+      const staffPercent = ((job.tenant?.settings as any)?.staff_percent ?? 70) / 100;
       const staffEarning = Math.round(grossAmount * staffPercent);
       return {
         id: job.id,
+        description: job.description ?? '',
+        agreed_price: job.agreed_price ?? 0,
+        collected_amount: job.collected_amount ?? null,
         completed_at: job.completed_at,
         status: job.status,
         category: job.category,

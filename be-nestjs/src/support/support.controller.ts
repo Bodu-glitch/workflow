@@ -47,6 +47,22 @@ export class SupportController {
     return this.service.listAllTickets(user);
   }
 
+  /** GET /support/tickets/:id/messages — staff + BO/OT xem toàn bộ tin nhắn */
+  @Get('tickets/:id/messages')
+  getMessages(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.service.getMessages(id, user);
+  }
+
+  /** POST /support/tickets/:id/messages — staff gửi tin nhắn */
+  @Post('tickets/:id/messages')
+  sendMessage(
+    @Param('id') id: string,
+    @Body('content') content: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.sendMessage(id, content, user);
+  }
+
   /** GET /support/tickets/:id/replies — xem replies của ticket */
   @Get('tickets/:id/replies')
   getTicketReplies(@Param('id') id: string, @CurrentUser() user: any) {

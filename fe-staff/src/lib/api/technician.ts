@@ -82,8 +82,8 @@ export const technicianApi = {
           id: string;
           description: string;
           agreed_price: number;
-          final_amount: number | null;
           collected_amount: number | null;
+          gross_amount: number;
           staff_earning: number;
           rating: number | null;
           completed_at: string;

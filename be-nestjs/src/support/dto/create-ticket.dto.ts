@@ -1,11 +1,11 @@
-import { IsUUID, IsNotEmpty, IsString } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class CreateTicketDto {
-  @IsUUID()
-  @IsNotEmpty()
-  task_id: string;
-
   @IsString()
-  @IsNotEmpty()
-  description: string;
+  @MinLength(5)
+  subject: string;
+
+  @IsOptional()
+  @IsUUID()
+  request_id?: string;
 }

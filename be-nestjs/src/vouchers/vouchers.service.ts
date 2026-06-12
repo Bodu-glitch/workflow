@@ -26,7 +26,7 @@ export class VouchersService {
 
     const { data, count, error } = await this.supabase.db
       .from('vouchers')
-      .select('*, category:service_category_id(id, name, slug)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -36,7 +36,7 @@ export class VouchersService {
   }
 
   async createVoucher(tenantId: string, dto: CreateVoucherDto, userId: string) {
-    if (dto.type === 'percent' && (dto.value <= 0 || dto.value > 100)) {
+    if (dto.type === 'percentage' && (dto.value <= 0 || dto.value > 100)) {
       throw new BadRequestException({ code: 'INVALID_VOUCHER_VALUE', message: 'Giá trị phần trăm phải từ 1-100' });
     }
 
@@ -45,16 +45,14 @@ export class VouchersService {
       .insert({
         tenant_id: tenantId,
         code: dto.code.toUpperCase().trim(),
-        name: dto.name ?? null,
+        name: dto.name ?? '',
         type: dto.type,
         value: dto.value,
-        max_discount: dto.max_discount,
-        min_order_value: dto.min_order_value ?? 0,
-        service_category_id: dto.service_category_id ?? null,
+        max_discount: dto.max_discount ?? null,
+        min_order_amount: dto.min_order_amount ?? null,
         usage_limit: dto.usage_limit ?? null,
-        is_public: dto.is_public ?? true,
-        starts_at: dto.starts_at ?? null,
-        ends_at: dto.ends_at ?? null,
+        start_date: dto.start_date ?? null,
+        end_date: dto.end_date ?? null,
         created_by: userId,
       })
       .select()
@@ -79,9 +77,20 @@ export class VouchersService {
     if (!existing) throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Voucher không tồn tại' });
     if (existing.tenant_id !== tenantId) throw new ForbiddenException();
 
+    const updatePayload: Record<string, any> = {};
+    if (dto.name !== undefined) updatePayload.name = dto.name;
+    if (dto.type !== undefined) updatePayload.type = dto.type;
+    if (dto.value !== undefined) updatePayload.value = dto.value;
+    if (dto.max_discount !== undefined) updatePayload.max_discount = dto.max_discount;
+    if (dto.min_order_amount !== undefined) updatePayload.min_order_amount = dto.min_order_amount;
+    if (dto.usage_limit !== undefined) updatePayload.usage_limit = dto.usage_limit;
+    if (dto.is_active !== undefined) updatePayload.is_active = dto.is_active;
+    if (dto.start_date !== undefined) updatePayload.start_date = dto.start_date;
+    if (dto.end_date !== undefined) updatePayload.end_date = dto.end_date;
+
     const { data, error } = await this.supabase.db
       .from('vouchers')
-      .update(dto)
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single();
@@ -119,33 +128,26 @@ export class VouchersService {
       throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Mã voucher không hợp lệ hoặc không tồn tại' });
     }
 
-    if (voucher.starts_at && voucher.starts_at > now) {
+    if (voucher.start_date && voucher.start_date > now) {
       throw new BadRequestException({ code: 'VOUCHER_NOT_STARTED', message: 'Voucher chưa đến thời gian sử dụng' });
     }
-    if (voucher.ends_at && voucher.ends_at < now) {
+    if (voucher.end_date && voucher.end_date < now) {
       throw new BadRequestException({ code: 'VOUCHER_EXPIRED', message: 'Voucher đã hết hạn' });
     }
-    if (voucher.usage_limit !== null && voucher.usage_count >= voucher.usage_limit) {
+    if (voucher.usage_limit !== null && voucher.used_count >= voucher.usage_limit) {
       throw new BadRequestException({ code: 'VOUCHER_EXHAUSTED', message: 'Voucher đã hết lượt sử dụng' });
     }
 
     const orderAmount = dto.order_amount ?? 0;
-    if (voucher.min_order_value && orderAmount < voucher.min_order_value) {
+    if (voucher.min_order_amount && orderAmount < voucher.min_order_amount) {
       throw new BadRequestException({
         code: 'ORDER_AMOUNT_TOO_LOW',
-        message: `Đơn hàng tối thiểu ${voucher.min_order_value.toLocaleString('vi-VN')}đ để sử dụng voucher này`,
-      });
-    }
-
-    if (voucher.service_category_id && dto.category_id && voucher.service_category_id !== dto.category_id) {
-      throw new BadRequestException({
-        code: 'VOUCHER_CATEGORY_MISMATCH',
-        message: 'Voucher không áp dụng cho loại dịch vụ này',
+        message: `Đơn hàng tối thiểu ${voucher.min_order_amount.toLocaleString('vi-VN')}đ để sử dụng voucher này`,
       });
     }
 
     let discount = 0;
-    if (voucher.type === 'percent') {
+    if (voucher.type === 'percent' || voucher.type === 'percentage') {
       discount = (orderAmount * voucher.value) / 100;
       if (voucher.max_discount) discount = Math.min(discount, voucher.max_discount);
     } else {
@@ -171,13 +173,13 @@ export class VouchersService {
   async applyVoucher(requestId: string, code: string, tenantId: string, customerId: string) {
     const { data: request } = await this.supabase.db
       .from('service_requests')
-      .select('id, agreed_price, category_id, customer_id, applied_voucher_id, status')
+      .select('id, agreed_price, category_id, customer_id, voucher_id, status')
       .eq('id', requestId)
       .single();
 
     if (!request) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Đơn hàng không tồn tại' });
     if (request.customer_id !== customerId) throw new ForbiddenException();
-    if (request.applied_voucher_id) {
+    if (request.voucher_id) {
       throw new BadRequestException({ code: 'VOUCHER_ALREADY_APPLIED', message: 'Đơn hàng đã có voucher' });
     }
 
@@ -194,20 +196,12 @@ export class VouchersService {
     await this.supabase.db
       .from('service_requests')
       .update({
-        applied_voucher_id: validResult.voucher_id,
+        voucher_id: validResult.voucher_id,
         discount_amount: discountAmount,
-        final_amount: finalAmount,
       })
       .eq('id', requestId);
 
-    await this.supabase.db.from('voucher_usages').insert({
-      voucher_id: validResult.voucher_id,
-      request_id: requestId,
-      customer_id: customerId,
-      discount_amount: discountAmount,
-    });
-
-    await this.supabase.db.rpc('increment_voucher_usage', { voucher_id: validResult.voucher_id });
+    await this.supabase.db.rpc('increment_voucher_used_count', { voucher_id: validResult.voucher_id });
 
     return { discount_amount: discountAmount, final_amount: finalAmount };
   }
@@ -215,7 +209,7 @@ export class VouchersService {
   async getVoucherStats(id: string, tenantId: string) {
     const { data: voucher } = await this.supabase.db
       .from('vouchers')
-      .select('*')
+      .select('id, tenant_id, code, name, used_count')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .single();
@@ -223,42 +217,19 @@ export class VouchersService {
     if (!voucher) throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Voucher không tồn tại' });
 
     const { data: usages } = await this.supabase.db
-      .from('voucher_usages')
-      .select('discount_amount')
-      .eq('voucher_id', id);
-
-    const totalUsed = usages?.length ?? 0;
-    const totalDiscount = (usages ?? []).reduce((sum, u) => sum + Number(u.discount_amount), 0);
-
-    return {
-      ...voucher,
-      stats: {
-        total_used: totalUsed,
-        total_discount: totalDiscount,
-      },
-    };
-  }
-
-  async getStats(voucherId: string, user: CurrentUser) {
-    const { data: voucher } = await this.supabase.db
-      .from('vouchers').select('id, tenant_id, code, name, usage_count').eq('id', voucherId).single();
-    if (!voucher) throw new NotFoundException({ code: 'VOUCHER_NOT_FOUND', message: 'Voucher not found' });
-    if (voucher.tenant_id !== user.tenant_id) throw new ForbiddenException();
-
-    const { data: usages } = await this.supabase.db
       .from('service_requests')
       .select('discount_amount')
-      .eq('applied_voucher_id', voucherId)
+      .eq('voucher_id', id)
       .not('discount_amount', 'is', null);
 
-    const total_discount = (usages ?? []).reduce((s: number, r: any) => s + Number(r.discount_amount || 0), 0);
+    const totalDiscount = (usages ?? []).reduce((sum, u) => sum + Number(u.discount_amount || 0), 0);
 
     return {
-      voucher_id: voucherId,
+      voucher_id: voucher.id,
       code: voucher.code,
       name: voucher.name,
-      used_count: voucher.usage_count,
-      total_discount_given: Math.round(total_discount),
+      used_count: voucher.used_count,
+      total_discount_given: Math.round(totalDiscount),
     };
   }
 

@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<string, string> = {
 export default function SupportListScreen() {
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['support-tickets'],
-    queryFn: () => supportApi.listTickets(),
+    queryFn: () => supportApi.myTickets(),
     select: (d) => d.data,
   });
 

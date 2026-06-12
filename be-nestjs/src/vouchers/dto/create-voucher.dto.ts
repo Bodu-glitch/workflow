@@ -10,8 +10,8 @@ export class CreateVoucherDto {
   @MinLength(3)
   name?: string;
 
-  @IsEnum(['percent', 'fixed'])
-  type: 'percent' | 'fixed';
+  @IsEnum(['percent', 'fixed', 'percentage'])
+  type: 'percent' | 'fixed' | 'percentage';
 
   @IsNumber()
   @Type(() => Number)
@@ -28,11 +28,7 @@ export class CreateVoucherDto {
   @IsNumber()
   @Type(() => Number)
   @Min(0)
-  min_order_value?: number;
-
-  @IsOptional()
-  @IsString()
-  service_category_id?: string;
+  min_order_amount?: number;
 
   @IsOptional()
   @IsInt()
@@ -41,14 +37,10 @@ export class CreateVoucherDto {
   usage_limit?: number;
 
   @IsOptional()
-  @IsBoolean()
-  is_public?: boolean;
+  @IsDateString()
+  start_date?: string;
 
   @IsOptional()
   @IsDateString()
-  starts_at?: string;
-
-  @IsOptional()
-  @IsDateString()
-  ends_at?: string;
+  end_date?: string;
 }
