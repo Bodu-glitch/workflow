@@ -109,6 +109,7 @@ export default function NewRequestScreen() {
   const [tenants, setTenants] = useState<MatchingTenant[]>([]);
   const [loadingTenants, setLoadingTenants] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [selectedPricingId, setSelectedPricingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState(0);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   const [selectingTenant, setSelectingTenant] = useState(false);
@@ -306,7 +307,7 @@ export default function NewRequestScreen() {
     if (!selectedTenantId || !createdRequestId) return;
     setSelectingTenant(true);
     try {
-      await api.selectTenant(createdRequestId, selectedTenantId);
+      await api.selectTenant(createdRequestId, selectedTenantId!, selectedPricingId!);
       // Load vouchers for selected tenant
       setStep(4);
       setLoadingVouchers(true);
@@ -598,7 +599,7 @@ export default function NewRequestScreen() {
               <Text style={styles.stepSubtitle}>Được đánh giá tốt gần bạn</Text>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingVertical: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingVertical: 8, alignItems: 'center' }}>
               {FILTER_OPTIONS.map((f, i) => (
                 <TouchableOpacity
                   key={f}
@@ -630,10 +631,10 @@ export default function NewRequestScreen() {
             ) : (
               <FlatList
                 data={getFilteredTenants()}
-                keyExtractor={(item) => item.tenant.id}
+                keyExtractor={(item) => item.pricing.id}
                 contentContainerStyle={{ padding: 16, gap: 12 }}
                 renderItem={({ item }) => {
-                  const isSelected = selectedTenantId === item.tenant.id;
+                  const isSelected = selectedPricingId === item.pricing.id;
                   const priceStr = formatPrice(item.pricing.price_min, item.pricing.price_max, item.pricing.price_fixed);
                   const categoryIcon = selectedCategory ? (CATEGORY_ICONS[selectedCategory.slug] ?? '🔧') : '🔧';
                   const bgColor = selectedCategory ? (CATEGORY_BG_COLORS[selectedCategory.slug] ?? '#F3F4F6') : '#F3F4F6';
@@ -645,7 +646,10 @@ export default function NewRequestScreen() {
                   return (
                     <TouchableOpacity
                       style={[styles.businessCard, isSelected && styles.businessCardSelected]}
-                      onPress={() => setSelectedTenantId(item.tenant.id)}
+                      onPress={() => {
+                        setSelectedTenantId(item.tenant.id);
+                        setSelectedPricingId(item.pricing.id);
+                      }}
                     >
                       <View style={styles.businessCardTop}>
                         <View style={[styles.businessIcon, { backgroundColor: bgColor }]}>
@@ -779,8 +783,8 @@ export default function NewRequestScreen() {
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.voucherValue}>{valueDisplay}</Text>
-                            {v.min_order_value && v.min_order_value > 0 && (
-                              <Text style={styles.voucherDesc}>Đơn tối thiểu {formatVnd(v.min_order_value)}</Text>
+                            {(v.min_order_value ?? 0) > 0 && (
+                              <Text style={styles.voucherDesc}>Đơn tối thiểu {formatVnd(v.min_order_value!)}</Text>
                             )}
                             {v.ends_at && (
                               <Text style={styles.voucherDesc}>HSD: {new Date(v.ends_at).toLocaleDateString('vi-VN')}</Text>
@@ -868,7 +872,7 @@ export default function NewRequestScreen() {
           </View>
         )}
 
-        {step === 3 && tenants.length > 0 && selectedTenantId && (
+        {step === 3 && tenants.length > 0 && selectedPricingId && (
           <View style={styles.footer}>
             {/* Voucher code input */}
             <View style={styles.voucherRow}>
@@ -895,9 +899,9 @@ export default function NewRequestScreen() {
               </View>
             )}
             <TouchableOpacity
-              style={[styles.nextBtn, (!selectedTenantId || selectingTenant) && styles.disabled]}
+              style={[styles.nextBtn, (!selectedPricingId || selectingTenant) && styles.disabled]}
               onPress={handleConfirmTenantAndLoadVouchers}
-              disabled={!selectedTenantId || selectingTenant}
+              disabled={!selectedPricingId || selectingTenant}
             >
               {selectingTenant
                 ? <ActivityIndicator color="#fff" />
@@ -923,7 +927,7 @@ export default function NewRequestScreen() {
             </TouchableOpacity>
           </View>
         )}
-        {step === 3 && tenants.length > 0 && !selectedTenantId && (
+        {step === 3 && tenants.length > 0 && !selectedPricingId && (
           <View style={styles.footer}>
             <TouchableOpacity
               style={[styles.nextBtn, styles.disabled]}
@@ -1157,6 +1161,7 @@ const styles = StyleSheet.create({
   filterChip: {
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 24,
     backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.border,
+    flexShrink: 0,
   },
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   filterChipText: { fontSize: 13, fontWeight: '600', color: COLORS.text },

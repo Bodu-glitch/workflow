@@ -100,7 +100,7 @@ export class RequestsService {
 
     // Always populate matches; only notify tenants for immediately available requests
     if (resolvedCategoryId) {
-      void this.autoMatchAndNotify(request.id, resolvedCategoryId, isScheduled);
+      await this.autoMatchAndNotify(request.id, resolvedCategoryId, isScheduled);
     }
 
     return { ...request, suggested_categories: suggestedCategories };
@@ -116,7 +116,8 @@ export class RequestsService {
         *,
         category:category_id(id, name, slug, icon_url),
         tenant:tenant_id(id, name, slug),
-        staff:assigned_staff_id(id, full_name, avatar_url, rating_avg)
+        staff:assigned_staff_id(id, full_name, avatar_url, rating_avg),
+        ratings!left(id, score)
       `, { count: 'exact' });
 
     if (user.role === 'customer') {
@@ -237,16 +238,16 @@ export class RequestsService {
       throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Cannot select tenant at this stage' });
     }
 
-    // Verify the tenant is in the match list for this request
+    // Verify the pricing is in the match list for this request
     const { data: match } = await this.supabase.db
       .from('request_tenant_matches')
-      .select('id, pricing_id')
+      .select('id, tenant_id, pricing_id')
       .eq('request_id', id)
-      .eq('tenant_id', dto.tenant_id)
+      .eq('pricing_id', dto.pricing_id)
       .single();
 
     if (!match) {
-      throw new BadRequestException({ code: 'TENANT_NOT_MATCHED', message: 'Tenant is not in the matched list for this request' });
+      throw new BadRequestException({ code: 'TENANT_NOT_MATCHED', message: 'Pricing not in matched list for this request' });
     }
 
     // Scheduled requests stay 'unavailable' until scheduled time; immediate requests go to 'pending_assignment'
@@ -256,7 +257,7 @@ export class RequestsService {
     let discountAmount: number | null = null;
     if (dto.voucher_code && dto.agreed_price != null) {
       try {
-        const vr = await this.vouchers.validate(dto.voucher_code, dto.tenant_id, dto.agreed_price);
+        const vr = await this.vouchers.validate(dto.voucher_code, match.tenant_id, dto.agreed_price);
         voucherId = vr.voucher_id;
         discountAmount = vr.discount_amount;
         // Increment used_count
@@ -269,8 +270,8 @@ export class RequestsService {
     const { data, error } = await this.supabase.db
       .from('service_requests')
       .update({
-        tenant_id: dto.tenant_id,
-        pricing_id: dto.pricing_id ?? match.pricing_id ?? null,
+        tenant_id: match.tenant_id,
+        pricing_id: match.pricing_id,
         status: newStatus,
         ...(voucherId ? { voucher_id: voucherId, discount_amount: discountAmount } : {}),
       })
@@ -283,9 +284,9 @@ export class RequestsService {
     await this.supabase.db.from('audit_logs').insert({
       request_id: id,
       user_id: user.id,
-      tenant_id: dto.tenant_id,
+      tenant_id: match.tenant_id,
       action: 'request_status_changed',
-      metadata: { from: request.status, to: newStatus, tenant_id: dto.tenant_id },
+      metadata: { from: request.status, to: newStatus, tenant_id: match.tenant_id },
     });
 
     if (newStatus === 'pending_assignment') {
@@ -296,7 +297,7 @@ export class RequestsService {
     const { data: operators } = await this.supabase.db
       .from('user_tenants')
       .select('user_id')
-      .eq('tenant_id', dto.tenant_id)
+      .eq('tenant_id', match.tenant_id)
       .in('role', ['business_owner', 'operator'])
       .eq('is_active', true);
 
@@ -308,7 +309,7 @@ export class RequestsService {
         title: 'Khách hàng đã chọn bạn!',
         body: `Yêu cầu: ${request.description.substring(0, 60)}`,
         request_id: id,
-        tenant_id: dto.tenant_id,
+        tenant_id: match.tenant_id,
       });
     }
 
@@ -441,12 +442,12 @@ export class RequestsService {
       // + All non-terminal requests where tenant_id = tenantId
       query = baseSelect.or(
         `and(status.eq.available,id.in.(${matchedIds.join(',')})),` +
-        `and(tenant_id.eq.${tenantId},status.in.(pending_assignment,assigned,in_progress))`,
+        `and(tenant_id.eq.${tenantId},status.in.(pending_assignment,assigned,moving,arrived,in_progress))`,
       );
     } else {
       query = baseSelect
         .eq('tenant_id', tenantId)
-        .in('status', ['pending_assignment', 'assigned', 'in_progress']);
+        .in('status', ['pending_assignment', 'assigned', 'moving', 'arrived', 'in_progress']);
     }
 
     const { data, count, error } = await query
@@ -549,6 +550,8 @@ export class RequestsService {
       available: 0,
       pending_assignment: 0,
       assigned: 0,
+      moving: 0,
+      arrived: 0,
       in_progress: 0,
       completed: 0,
       completed_late: 0,
@@ -589,39 +592,28 @@ export class RequestsService {
     }
   }
 
-  // Customer: view bill + payment QR after task completion
+  // Customer: view bill + payment QR after request completion
   async getBill(requestId: string, user: CurrentUser) {
     const request = await this.getRequest(requestId, user);
 
-    const taskId = (request as any).task_id;
-    const taskStatus = (request as any).task?.status;
-    const isCompleted = taskStatus === 'done'
-      || ['completed', 'completed_late'].includes(request.status);
-
-    if (!isCompleted) {
+    if (!['completed', 'completed_late'].includes(request.status)) {
       throw new UnprocessableEntityException({
         code: 'BILL_NOT_READY',
         message: 'Hóa đơn sẽ có sau khi nhân viên hoàn thành công việc.',
       });
     }
 
-    // Service items from the linked task
-    let items: Array<{ label: string; unit_price: number }> = [];
-    if (taskId) {
-      const { data: serviceItems } = await this.supabase.db
-        .from('task_service_items')
-        .select('label, unit_price, checked')
-        .eq('task_id', taskId)
-        .eq('checked', true)
-        .order('created_at');
-      items = (serviceItems ?? []).map((i: any) => ({ label: i.label, unit_price: Number(i.unit_price) || 0 }));
-    }
+    const { data: serviceItems } = await this.supabase.db
+      .from('request_service_items')
+      .select('label, unit_price, checked')
+      .eq('request_id', requestId)
+      .eq('checked', true)
+      .order('created_at');
 
-    const itemsTotal = items.reduce((s, i) => s + i.unit_price, 0);
-    // Prefer the actual collected/agreed amount if set, else the checklist total
+    const items = (serviceItems ?? []).map((i: any) => ({ label: i.label, unit_price: Number(i.unit_price) || 0 }));
+    const itemsTotal = items.reduce((s: number, i: any) => s + i.unit_price, 0);
     const total = request.collected_amount ?? request.agreed_price ?? itemsTotal;
 
-    // Tenant bank payment info for VietQR
     let payment: { bank_code: string; account_number: string; account_name: string } | null = null;
     if (request.tenant_id) {
       const { data: tenant } = await this.supabase.db
@@ -640,92 +632,98 @@ export class RequestsService {
       total,
       collected_amount: request.collected_amount ?? null,
       payment,
-      status: taskStatus ?? request.status,
+      status: request.status,
     };
   }
 
-  // BO/OT: convert a customer service_request into a pool task
-  async createTaskFromRequest(requestId: string, user: CurrentUser) {
+  // Staff: complete a request (checkout) — upload photo + GPS + collected amount
+  async checkout(requestId: string, user: CurrentUser, dto: {
+    gps_lat?: number;
+    gps_lng?: number;
+    collected_amount?: number;
+    notes?: string;
+    photo?: Express.Multer.File;
+  }) {
     const { data: req, error: reqErr } = await this.supabase.db
       .from('service_requests')
-      .select('*, customer:customer_id(id, full_name, phone, email)')
+      .select('id, status, tenant_id, assigned_staff_id, scheduled_at')
       .eq('id', requestId)
       .single();
 
     if (reqErr || !req) throw new NotFoundException({ code: 'REQUEST_NOT_FOUND', message: 'Request not found' });
-    if (req.tenant_id !== user.tenant_id) {
-      throw new ForbiddenException({ code: 'FORBIDDEN', message: 'Request does not belong to your workspace' });
+    if (req.assigned_staff_id !== user.id) {
+      throw new ForbiddenException({ code: 'NOT_ASSIGNEE', message: 'Not assigned to this request' });
     }
-    if (req.task_id) {
-      throw new UnprocessableEntityException({ code: 'TASK_ALREADY_CREATED', message: 'Task already created from this request' });
+    if (req.status !== 'in_progress') {
+      throw new UnprocessableEntityException({ code: 'INVALID_STATUS', message: 'Request must be in_progress to check out' });
     }
 
-    const title = (req.description ?? '').slice(0, 100) || 'Yêu cầu từ khách hàng';
-    const { data: task, error: taskErr } = await this.supabase.db
-      .from('tasks')
-      .insert({
-        title,
-        description: req.description,
-        tenant_id: req.tenant_id,
-        created_by: user.id,
-        status: 'todo',
-        priority: req.is_emergency ? 'urgent' : 'medium',
-        location_lat: req.location_lat,
-        location_lng: req.location_lng,
-        location_name: req.location_name ?? req.location_address,
-        location_radius_m: 100,
-        customer_name: (req.customer as any)?.full_name ?? null,
-        customer_phone: (req.customer as any)?.phone ?? null,
-        customer_email: (req.customer as any)?.email ?? null,
-        scheduled_at: req.scheduled_at,
-      })
-      .select()
-      .single();
+    const now = new Date();
+    const isLate = req.scheduled_at && now > new Date(req.scheduled_at);
+    const newStatus = isLate ? 'completed_late' : 'completed';
 
-    if (taskErr || !task) throw new BadRequestException(taskErr?.message ?? 'Failed to create task');
-
-    // Link task back to service_request
-    await this.supabase.db
-      .from('service_requests')
-      .update({ task_id: task.id, status: 'pending_assignment' })
-      .eq('id', requestId);
-
-    // Notify nearby staff (F1) — fire-and-forget
-    if (task.location_lat && task.location_lng) {
-      const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { data: locs } = await this.supabase.db
-        .from('staff_locations')
-        .select('user_id, lat, lng')
-        .eq('tenant_id', user.tenant_id)
-        .gte('created_at', cutoff)
-        .order('created_at', { ascending: false });
-
-      if (locs && locs.length > 0) {
-        const seen = new Set<string>();
-        const nearby: string[] = [];
-        for (const loc of locs) {
-          if (seen.has(loc.user_id)) continue;
-          seen.add(loc.user_id);
-          const dLat = (task.location_lat - loc.lat) * Math.PI / 180;
-          const dLng = (task.location_lng - loc.lng) * Math.PI / 180;
-          const a = Math.sin(dLat / 2) ** 2 + Math.cos(task.location_lat * Math.PI / 180) * Math.cos(loc.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-          const dist = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          if (dist <= 10_000) nearby.push(loc.user_id);
-        }
-        if (nearby.length > 0) {
-          void this.notifications.sendPushNotification({
-            user_ids: nearby,
-            type: 'new_pool_task',
-            title: 'Nhiệm vụ mới gần bạn',
-            body: `${task.title} – Nhấn để nhận ngay!`,
-            task_id: task.id,
-            tenant_id: user.tenant_id,
-          });
-        }
+    let photoUrl: string | null = null;
+    if (dto.photo) {
+      const ext = dto.photo.originalname.split('.').pop() ?? 'jpg';
+      const path = `${user.tenant_id}/${requestId}/checkout/${Date.now()}.${ext}`;
+      const { error: uploadError } = await this.supabase.db.storage
+        .from('checkin-photos')
+        .upload(path, dto.photo.buffer, { contentType: dto.photo.mimetype });
+      if (!uploadError) {
+        const { data: { publicUrl } } = this.supabase.db.storage.from('checkin-photos').getPublicUrl(path);
+        photoUrl = publicUrl;
       }
     }
 
-    return { task_id: task.id, message: 'Task created and added to pool' };
+    await this.supabase.db.from('checkins').insert({
+      request_id: requestId,
+      user_id: user.id,
+      type: 'checkout',
+      gps_lat: dto.gps_lat ?? null,
+      gps_lng: dto.gps_lng ?? null,
+      gps_verified: false,
+      photo_url: photoUrl,
+      notes: dto.notes ?? null,
+    });
+
+    const { data, error } = await this.supabase.db
+      .from('service_requests')
+      .update({
+        status: newStatus,
+        completed_at: now.toISOString(),
+        collected_amount: dto.collected_amount ?? null,
+      })
+      .eq('id', requestId)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    await this.supabase.db.from('audit_logs').insert({
+      request_id: requestId,
+      user_id: user.id,
+      tenant_id: user.tenant_id,
+      action: 'checkout',
+      metadata: { gps_lat: dto.gps_lat, gps_lng: dto.gps_lng, collected_amount: dto.collected_amount },
+    });
+
+    void this.supabase.db
+      .from('user_tenants')
+      .update({ online_status: 'online' })
+      .eq('user_id', user.id)
+      .eq('tenant_id', user.tenant_id);
+
+    this.gateway.emitRequestStatusChanged(requestId, newStatus);
+
+    void this.notifications.sendPushNotification({
+      user_ids: [data.customer_id],
+      type: 'request_completed',
+      title: 'Dịch vụ hoàn thành',
+      body: 'Nhân viên đã hoàn thành công việc. Cảm ơn bạn đã sử dụng dịch vụ!',
+      request_id: requestId,
+    });
+
+    return data;
   }
 
   async overrideBill(requestId: string, dto: { agreed_price: number; override_note?: string }, user: CurrentUser) {

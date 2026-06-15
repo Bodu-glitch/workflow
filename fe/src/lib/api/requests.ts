@@ -34,6 +34,8 @@ export interface RequestDashboardSummary {
   available: number;
   pending_assignment: number;
   assigned: number;
+  moving: number;
+  arrived: number;
   in_progress: number;
   completed: number;
   completed_late: number;
@@ -80,11 +82,6 @@ export const requestsApi = {
     apiFetch<{ data: ChatMessage }>(`/requests/${requestId}/chat/${channel}`, {
       method: 'POST',
       body: JSON.stringify({ content }),
-    }),
-
-  createTask: (id: string) =>
-    apiFetch<{ task_id: string; message: string }>(`/requests/${id}/create-task`, {
-      method: 'POST',
     }),
 
   overrideBill: (id: string, agreed_price: number, override_note?: string) =>

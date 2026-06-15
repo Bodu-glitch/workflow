@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Alert, Platform, ActivityIndicator, Modal, RefreshControl, TextInput as RNTextInput } from 'react-native';
+import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
 import { useAuth } from '@/context/auth';
@@ -412,12 +413,11 @@ export default function PricingScreen() {
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<ServicePricing | null>(null);
-  const [filterCategoryId, setFilterCategoryId] = useState<string>('');
   const [showCommission, setShowCommission] = useState(false);
 
   const { data: pricings, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: ['pricings', tenantId, filterCategoryId],
-    queryFn: () => pricingApi.list(filterCategoryId || undefined),
+    queryKey: ['pricings', tenantId],
+    queryFn: () => pricingApi.list(),
     select: d => d.data,
     enabled: !!tenantId,
   });
@@ -504,14 +504,13 @@ export default function PricingScreen() {
     <View className="flex-1 bg-surface">
       <View className="glass-effect px-5 pt-14 pb-3">
         <View className="flex-row items-center justify-between mb-3">
-          <Text className="text-2xl font-extrabold text-on-surface tracking-tight">Pricing</Text>
-          <View className="flex-row gap-2">
-            <Pressable
-              onPress={() => setShowCommission(true)}
-              className="bg-surface-container-high rounded-xl px-3 py-2"
-            >
-              <Text className="text-xs font-semibold text-on-surface-variant">💰 Hoa hồng</Text>
+          <View className="flex-row items-center gap-3">
+            <Pressable onPress={() => router.back()} className="p-1 -ml-1 active:opacity-60">
+              <Text className="text-2xl text-on-surface">‹</Text>
             </Pressable>
+            <Text className="text-2xl font-extrabold text-on-surface tracking-tight">Pricing</Text>
+          </View>
+          <View className="flex-row gap-2">
             <Pressable
               onPress={() => { setEditing(null); setShowModal(true); }}
               className="bg-primary rounded-xl px-4 py-2"
@@ -521,30 +520,6 @@ export default function PricingScreen() {
           </View>
         </View>
 
-        {/* Category filter */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 4 }}>
-          <Pressable
-            onPress={() => setFilterCategoryId('')}
-            style={{ marginRight: 8 }}
-            className={`px-4 py-2 rounded-full ${!filterCategoryId ? 'bg-primary' : 'bg-surface-container-high'}`}
-          >
-            <Text className={`text-sm font-semibold ${!filterCategoryId ? 'text-white' : 'text-on-surface-variant'}`}>
-              All
-            </Text>
-          </Pressable>
-          {categories.map(cat => (
-            <Pressable
-              key={cat.id}
-              onPress={() => setFilterCategoryId(cat.id === filterCategoryId ? '' : cat.id)}
-              style={{ marginRight: 8 }}
-              className={`px-4 py-2 rounded-full ${filterCategoryId === cat.id ? 'bg-primary' : 'bg-surface-container-high'}`}
-            >
-              <Text className={`text-sm font-semibold ${filterCategoryId === cat.id ? 'text-white' : 'text-on-surface-variant'}`}>
-                {cat.name}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
       </View>
 
       <ScrollView

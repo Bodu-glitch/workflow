@@ -18,11 +18,11 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit)
 VALUES ('review-photos', 'review-photos', true, 5242880)
 ON CONFLICT (id) DO NOTHING;
 
-CREATE POLICY IF NOT EXISTS "public read review photos"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'review-photos');
-
-CREATE POLICY IF NOT EXISTS "authenticated upload review photos"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'review-photos');
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'public read review photos') THEN
+    CREATE POLICY "public read review photos" ON storage.objects FOR SELECT USING (bucket_id = 'review-photos');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'authenticated upload review photos') THEN
+    CREATE POLICY "authenticated upload review photos" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'review-photos');
+  END IF;
+END $$;

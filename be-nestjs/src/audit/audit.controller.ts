@@ -17,13 +17,24 @@ interface CurrentUserType {
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
+  /** GET /audit/requests/:id — audit log của request (thay thế /audit/tasks/:id) */
+  @Get('requests/:id')
+  getRequestAuditLogs(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserType,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.auditService.getRequestAuditLogs(id, user, pagination);
+  }
+
+  /** GET /audit/tasks/:id — kept for backward-compat, forwards to request logs */
   @Get('tasks/:id')
   getTaskAuditLogs(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserType,
     @Query() pagination: PaginationDto,
   ) {
-    return this.auditService.getTaskAuditLogs(id, user, pagination);
+    return this.auditService.getRequestAuditLogs(id, user, pagination);
   }
 
   @Get('staff/:id')

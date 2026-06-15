@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshControl, ScrollView as RNScrollView, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { View, Text, Pressable, ScrollView } from '@/tw';
@@ -9,6 +9,7 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { AppHeader } from '@/components/AppHeader';
 import { ExportReportModal } from '@/components/tasks/ExportReportModal';
 import { useAuth } from '@/context/auth';
+import { useSocketContext } from '@/context/socket';
 
 const STAT_CARDS: {
   key: keyof RequestDashboardSummary;
@@ -19,7 +20,7 @@ const STAT_CARDS: {
 }[] = [
   { key: 'available',         label: 'Chờ xử lý',    color: '#3B82F6', bgColor: '#eff6ff', statusFilter: 'available' },
   { key: 'pending_assignment', label: 'Chờ phân công', color: '#F59E0B', bgColor: '#fffbeb', statusFilter: 'pending_assignment' },
-  { key: 'in_progress',       label: 'Đang thực hiện', color: '#8B5CF6', bgColor: '#f5f3ff', statusFilter: 'in_progress' },
+  { key: 'in_progress',       label: 'Đang thực hiện', color: '#8B5CF6', bgColor: '#f5f3ff', statusFilter: 'assigned,moving,arrived,in_progress' },
   { key: 'completed',         label: 'Hoàn thành',    color: '#10B981', bgColor: '#f0fdf4', statusFilter: 'completed,completed_late' },
 ];
 
@@ -64,6 +65,21 @@ export default function BODashboardScreen() {
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const [showExport, setShowExport] = useState(false);
+  const socket = useSocketContext();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => {
+      queryClient.invalidateQueries({ queryKey: ['requests-dashboard'] });
+    };
+    socket.on('request:status_changed', handler);
+    socket.on('pool:new_request', handler);
+    return () => {
+      socket.off('request:status_changed', handler);
+      socket.off('pool:new_request', handler);
+    };
+  }, [socket, queryClient]);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['requests-dashboard'],
@@ -80,8 +96,9 @@ export default function BODashboardScreen() {
   if (isError) return <ErrorView onRetry={refetch} />;
 
   const summary = (data as any)?.data?.summary ?? emptyDashboard();
-  const total = summary.available + summary.pending_assignment + summary.assigned
-    + summary.in_progress + summary.completed + summary.completed_late + summary.cancelled;
+  const activeCount = (summary.assigned ?? 0) + (summary.moving ?? 0) + (summary.arrived ?? 0) + (summary.in_progress ?? 0);
+  const total = summary.available + summary.pending_assignment + activeCount
+    + summary.completed + summary.completed_late + summary.cancelled;
 
   const currentTenant = user?.tenants?.find((t) => t.id === user.tenant_id) ?? user?.tenants?.[0];
   const tenantName = currentTenant?.name ?? 'My Workspace';
@@ -96,7 +113,7 @@ export default function BODashboardScreen() {
   const donutSlices = [
     { label: 'Chờ xử lý',    value: summary.available,          color: '#3B82F6' },
     { label: 'Chờ phân công', value: summary.pending_assignment,  color: '#F59E0B' },
-    { label: 'Đang thực hiện', value: summary.in_progress,        color: '#8B5CF6' },
+    { label: 'Đang thực hiện', value: activeCount,                color: '#8B5CF6' },
     { label: 'Hoàn thành',    value: summary.completed + summary.completed_late, color: '#10B981' },
   ];
 
@@ -163,7 +180,7 @@ export default function BODashboardScreen() {
                 {label}
               </Text>
               <Text style={{ fontSize: 36, fontWeight: '900', color: '#0d1c2e', marginTop: 8 }}>
-                {summary[key]}
+                {key === 'in_progress' ? activeCount : summary[key]}
               </Text>
             </Pressable>
           ))}

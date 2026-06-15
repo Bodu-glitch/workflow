@@ -259,9 +259,9 @@ export default function ProfileScreen() {
 
   const payMutation = useMutation({
     mutationFn: () => workspaceApi.updatePaymentInfo({
-      bank_code: payBankCode.trim().toUpperCase(),
-      account_number: payAccountNumber.trim(),
-      account_name: payAccountName.trim().toUpperCase(),
+      bank_name: payBankCode.trim().toUpperCase(),
+      bank_account: payAccountNumber.trim(),
+      bank_account_name: payAccountName.trim().toUpperCase(),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspace-payment'] });
@@ -272,10 +272,10 @@ export default function ProfileScreen() {
   });
 
   function startPayEdit() {
-    const p = (paymentQuery.data as any) ?? null;
-    setPayBankCode(p?.bank_code ?? '');
-    setPayAccountNumber(p?.account_number ?? '');
-    setPayAccountName(p?.account_name ?? '');
+    const p = (paymentQuery.data as any)?.data ?? null;
+    setPayBankCode(p?.bank_name ?? '');
+    setPayAccountNumber(p?.bank_account ?? '');
+    setPayAccountName(p?.bank_account_name ?? '');
     setPayEditing(true);
   }
 
@@ -1330,23 +1330,31 @@ export default function ProfileScreen() {
                   </Pressable>
                 </View>
               </View>
-            ) : (paymentQuery.data as any) ? (
-              <View className="bg-surface-container-lowest rounded-2xl p-4 gap-2">
+            ) : (paymentQuery.data as any)?.data?.bank_name ? (
+              <View className="bg-surface-container-lowest rounded-2xl p-4 gap-3">
                 <View className="flex-row items-center gap-3">
                   <View className="w-10 h-10 rounded-xl bg-blue-50 items-center justify-center">
                     <Text className="text-lg">🏦</Text>
                   </View>
                   <View className="flex-1">
                     <Text className="text-sm font-bold text-on-surface">
-                      {(paymentQuery.data as any).bank_code} — {(paymentQuery.data as any).account_number}
+                      {(paymentQuery.data as any).data.bank_name} — {(paymentQuery.data as any).data.bank_account}
                     </Text>
                     <Text className="text-xs text-on-surface-variant">
-                      {(paymentQuery.data as any).account_name}
+                      {(paymentQuery.data as any).data.bank_account_name}
                     </Text>
                   </View>
                   <View className="px-2 py-1 rounded-lg bg-success/10">
                     <Text className="text-[10px] font-bold text-success">VietQR ✓</Text>
                   </View>
+                </View>
+                <View className="items-center pt-1">
+                  <TwImage
+                    source={{ uri: `https://img.vietqr.io/image/${(paymentQuery.data as any).data.bank_name}-${(paymentQuery.data as any).data.bank_account}-compact2.png?accountName=${encodeURIComponent((paymentQuery.data as any).data.bank_account_name ?? '')}` }}
+                    style={{ width: 200, height: 200 }}
+                    resizeMode="contain"
+                  />
+                  <Text className="text-xs text-on-surface-variant mt-1">Quét để thanh toán</Text>
                 </View>
               </View>
             ) : (

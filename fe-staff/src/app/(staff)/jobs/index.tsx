@@ -10,56 +10,48 @@ import { ErrorView } from '@/components/ui/ErrorView';
 import { useAuth } from '@/context/auth';
 import { NotifBell } from '@/components/NotifBell';
 import { ChatBell } from '@/components/ChatBell';
-import type { Task } from '@/types/api';
+import type { ServiceRequestSummary } from '@/lib/api/requests';
 
-type TabKey = 'pool' | 'todo' | 'active' | 'done' | 'cancelled';
+type TabKey = 'pool' | 'assigned' | 'active' | 'completed' | 'cancelled';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'pool',      label: '🏊 Pool' },
-  { key: 'todo',      label: 'Mới' },
+  { key: 'assigned',  label: 'Mới' },
   { key: 'active',    label: '🔧 Đang thực hiện' },
-  { key: 'done',      label: 'Hoàn thành' },
+  { key: 'completed', label: 'Hoàn thành' },
   { key: 'cancelled', label: 'Đã hủy' },
 ];
 
 // ── Task card (my assigned tasks) ─────────────────────────────────────────────
-function TaskCard({ task }: { task: Task }) {
-  const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done';
-
+function TaskCard({ task }: { task: ServiceRequestSummary }) {
+  const scheduledAt = (task as any).scheduled_at as string | undefined;
   return (
     <Pressable
       onPress={() => router.push({ pathname: '/(staff)/tasks/[id]', params: { id: task.id } })}
       className="bg-surface-container-lowest rounded-xl p-5 mb-3 mx-4 overflow-hidden active:opacity-70"
     >
-      <View className={`absolute left-0 top-0 bottom-0 w-1 ${isOverdue ? 'bg-warning' : 'bg-primary'}`} />
+      <View className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
       <View className="flex-row items-start justify-between mb-2">
         <Text className="text-base font-bold text-on-surface flex-1 mr-3" numberOfLines={2}>
-          {task.title}
+          {task.category?.name ?? 'Dịch vụ'}
         </Text>
         <StatusBadge status={task.status} />
       </View>
 
       <View className="flex-row flex-wrap gap-2 mb-2">
         {task.priority && <PriorityBadge priority={task.priority} />}
-        {isOverdue && (
-          <View className="self-start px-2.5 py-1 rounded-full bg-warning-container">
-            <Text className="text-[10px] font-bold text-on-warning-container">⚠ QUÁ HẠN</Text>
-          </View>
-        )}
       </View>
 
       <View className="gap-1">
-        {task.location_name && (
-          <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {task.location_name}</Text>
+        {(task as any).location_address && (
+          <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {(task as any).location_address}</Text>
         )}
-        {task.scheduled_at && (
+        {task.description && (
+          <Text className="text-xs text-on-surface-variant" numberOfLines={1}>{task.description}</Text>
+        )}
+        {scheduledAt && (
           <Text className="text-xs text-on-surface-variant">
-            🕐 {new Date(task.scheduled_at).toLocaleString('vi-VN')}
-          </Text>
-        )}
-        {task.deadline && (
-          <Text className={`text-xs ${isOverdue ? 'text-warning' : 'text-on-surface-variant'}`}>
-            ⏰ {new Date(task.deadline).toLocaleString('vi-VN')}
+            🕐 {new Date(scheduledAt).toLocaleString('vi-VN')}
           </Text>
         )}
       </View>
@@ -68,8 +60,9 @@ function TaskCard({ task }: { task: Task }) {
 }
 
 // ── Pool task card ─────────────────────────────────────────────────────────────
-function PoolTaskCard({ task, onClaimed }: { task: Task; onClaimed: () => void }) {
+function PoolTaskCard({ task, onClaimed }: { task: ServiceRequestSummary; onClaimed: () => void }) {
   const [loading, setLoading] = useState(false);
+  const scheduledAt = (task as any).scheduled_at as string | undefined;
 
   const handleClaim = useCallback(async () => {
     setLoading(true);
@@ -81,13 +74,11 @@ function PoolTaskCard({ task, onClaimed }: { task: Task; onClaimed: () => void }
       const code = err?.code ?? '';
       Alert.alert(
         'Không thể nhận',
-        code === 'TIME_CONFLICT'
-          ? 'Thời gian nhiệm vụ này trùng với nhiệm vụ bạn đang có.'
-          : code === 'ALREADY_CLAIMED'
-          ? 'Nhiệm vụ đã được người khác nhận rồi.'
+        code === 'ALREADY_CLAIMED'
+          ? 'Yêu cầu đã được người khác nhận rồi.'
           : 'Vui lòng thử lại.',
       );
-      onClaimed(); // refresh list
+      onClaimed();
     } finally {
       setLoading(false);
     }
@@ -98,23 +89,21 @@ function PoolTaskCard({ task, onClaimed }: { task: Task; onClaimed: () => void }
       <View className="absolute left-0 top-0 bottom-0 w-1 bg-tertiary" />
       <View className="flex-row items-start justify-between mb-2">
         <Text className="text-base font-bold text-on-surface flex-1 mr-3" numberOfLines={2}>
-          {task.title}
+          {task.category?.name ?? 'Dịch vụ'}
         </Text>
         {task.priority && <PriorityBadge priority={task.priority} />}
       </View>
 
       <View className="gap-1 mb-4">
-        {task.location_name && (
-          <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {task.location_name}</Text>
+        {(task as any).location_address && (
+          <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {(task as any).location_address}</Text>
         )}
-        {task.scheduled_at && (
-          <Text className="text-xs text-on-surface-variant">
-            🕐 {new Date(task.scheduled_at).toLocaleString('vi-VN')}
-          </Text>
+        {task.description && (
+          <Text className="text-xs text-on-surface-variant" numberOfLines={2}>{task.description}</Text>
         )}
-        {task.deadline && (
+        {scheduledAt && (
           <Text className="text-xs text-on-surface-variant">
-            ⏰ {new Date(task.deadline).toLocaleString('vi-VN')}
+            🕐 {new Date(scheduledAt).toLocaleString('vi-VN')}
           </Text>
         )}
       </View>
@@ -126,7 +115,7 @@ function PoolTaskCard({ task, onClaimed }: { task: Task; onClaimed: () => void }
       >
         {loading
           ? <ActivityIndicator color="#fff" size="small" />
-          : <Text className="text-sm font-bold text-white">Nhận nhiệm vụ</Text>
+          : <Text className="text-sm font-bold text-white">Nhận yêu cầu</Text>
         }
       </Pressable>
     </View>
@@ -137,7 +126,7 @@ function PoolTaskCard({ task, onClaimed }: { task: Task; onClaimed: () => void }
 export default function MyTaskListScreen() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<TabKey>('todo');
+  const [activeTab, setActiveTab] = useState<TabKey>('assigned');
 
   const isPool = activeTab === 'pool';
   const status = isPool ? undefined : activeTab as string;
@@ -156,7 +145,7 @@ export default function MyTaskListScreen() {
   });
 
   const activeQuery = isPool ? poolQuery : myTasksQuery;
-  const tasks = activeQuery.data?.data ?? [];
+  const tasks: ServiceRequestSummary[] = (activeQuery.data?.data ?? []) as ServiceRequestSummary[];
 
   useFocusEffect(useCallback(() => {
     if (isPool) qc.invalidateQueries({ queryKey: ['pool-tasks'] });

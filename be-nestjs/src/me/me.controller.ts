@@ -78,22 +78,22 @@ export class MeController {
     return this.meService.getPaymentInfo(user.tenant_id);
   }
 
-  /** GET /me/tasks/pool — unassigned tasks in tenant. MUST be before /me/tasks */
+  /** GET /me/tasks/pool — pool requests available to self-assign. MUST be before /me/tasks */
   @Get('tasks/pool')
-  getPoolTasks(
+  getPoolRequests(
     @CurrentUser() user: CurrentUserType,
     @Query() pagination: PaginationDto,
   ) {
-    return this.meService.getPoolTasks(user, pagination);
+    return this.meService.getPoolRequests(user, pagination);
   }
 
   /** GET /me/tasks/history — MUST be before /me/tasks */
   @Get('tasks/history')
-  getMyTaskHistory(
+  getMyRequestHistory(
     @CurrentUser() user: CurrentUserType,
     @Query() pagination: PaginationDto,
   ) {
-    return this.meService.getMyTaskHistory(user, pagination);
+    return this.meService.getMyRequestHistory(user, pagination);
   }
 
   @Post('tasks/:id/start')
@@ -118,42 +118,42 @@ export class MeController {
 
   /** POST /me/tasks/:id/claim — Staff self-assigns from pool. MUST be before /me/tasks */
   @Post('tasks/:id/claim')
-  claimPoolTask(
+  claimPoolRequest(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.meService.claimPoolTask(id, user);
+    return this.meService.claimPoolRequest(id, user);
   }
 
   @Post('tasks/:id/reject')
-  rejectTask(
+  rejectRequest(
     @Param('id') id: string,
     @Body('reason') reason: string,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.meService.rejectTask(id, reason, user);
+    return this.meService.rejectRequest(id, reason, user);
   }
 
   @Get('tasks/:id/items')
-  getTaskItems(@Param('id') id: string) {
-    return this.meService.getTaskItems(id);
+  getRequestItems(@Param('id') id: string) {
+    return this.meService.getRequestItems(id);
   }
 
   @Put('tasks/:id/items')
-  saveTaskItems(
+  saveRequestItems(
     @Param('id') id: string,
     @Body() body: { items: any[] },
   ) {
-    return this.meService.saveTaskItems(id, body.items);
+    return this.meService.saveRequestItems(id, body.items);
   }
 
   @Get('tasks')
-  getMyTasks(
+  getMyRequests(
     @CurrentUser() user: CurrentUserType,
     @Query() pagination: PaginationDto,
     @Query('status') status?: string,
   ) {
-    return this.meService.getMyTasks(user, pagination, status);
+    return this.meService.getMyRequests(user, pagination, status);
   }
 }
 

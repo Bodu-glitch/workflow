@@ -1,9 +1,9 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query, Res,
-  UseGuards, UseInterceptors, UploadedFiles,
+  UseGuards, UseInterceptors, UploadedFile, UploadedFiles,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RequestsService } from './requests.service.js';
 import { CreateRequestDto } from './dto/create-request.dto.js';
@@ -68,14 +68,6 @@ export class RequestsController {
   @Post('match-categories')
   matchCategories(@Body() dto: MatchCategoriesDto) {
     return this.service.matchCategories(dto.description);
-  }
-
-  /** POST /requests/:id/create-task — BO/OT converts customer request into a pool task */
-  @Post(':id/create-task')
-  @UseGuards(RolesGuard)
-  @Roles('business_owner', 'operator')
-  createTaskFromRequest(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
-    return this.service.createTaskFromRequest(id, user);
   }
 
   @Get(':id')
@@ -214,5 +206,28 @@ export class RequestsController {
     @CurrentUser() user: CurrentUserType,
   ) {
     return this.service.rateRequest(id, dto, user);
+  }
+
+  /** POST /requests/:id/checkout — Staff completes a request (photo + GPS + collected amount) */
+  @Post(':id/checkout')
+  @UseGuards(RolesGuard)
+  @Roles('staff')
+  @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
+  checkout(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserType,
+    @UploadedFile() photo: Express.Multer.File,
+    @Body('gps_lat') gpsLat?: string,
+    @Body('gps_lng') gpsLng?: string,
+    @Body('collected_amount') collectedAmount?: string,
+    @Body('notes') notes?: string,
+  ) {
+    return this.service.checkout(id, user, {
+      gps_lat: gpsLat ? Number(gpsLat) : undefined,
+      gps_lng: gpsLng ? Number(gpsLng) : undefined,
+      collected_amount: collectedAmount ? Number(collectedAmount) : undefined,
+      notes,
+      photo,
+    });
   }
 }

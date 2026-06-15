@@ -8,7 +8,6 @@ import { EmailModule } from './email/email.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { StaffModule } from './staff/staff.module.js';
-import { TasksModule } from './tasks/tasks.module.js';
 import { MeModule } from './me/me.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
@@ -41,7 +40,6 @@ import { KnowledgeModule } from './knowledge/knowledge.module.js';
     AuthModule,
     AdminModule,
     StaffModule,
-    TasksModule,
     MeModule,
     AuditModule,
     NotificationsModule,

@@ -88,7 +88,7 @@ export function ChecklistAndPayment({ taskId, taskTitle, onChange }: Props) {
 
   const { data: paymentInfo } = useQuery({
     queryKey: ['workspace-payment'],
-    queryFn: () => meApi.paymentInfo().then((r) => (r as any).data ?? r),
+    queryFn: () => meApi.paymentInfo().then((r) => (r as any)?.data ?? (r as any) ?? null),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -112,7 +112,7 @@ export function ChecklistAndPayment({ taskId, taskTitle, onChange }: Props) {
         services.map((s: any) => ({
           service_id: s.id,
           label: s.name,
-          unit_price: 0,
+          unit_price: s.unit_price ?? 0,
           is_custom: false,
           checked: true,
         })),
@@ -227,15 +227,15 @@ export function ChecklistAndPayment({ taskId, taskTitle, onChange }: Props) {
 
           <View className="items-center mb-4">
             <RNImage
-              source={{ uri: vietQrUrl(paymentInfo.bank_code, paymentInfo.account_number, paymentInfo.account_name, displayAmount, taskTitle) }}
+              source={{ uri: vietQrUrl(paymentInfo.bank_name, paymentInfo.bank_account, paymentInfo.bank_account_name, displayAmount, taskTitle) }}
               style={{ width: 220, height: 280, borderRadius: 12 }}
               resizeMode="contain"
             />
           </View>
 
           <View className="bg-surface-container-high rounded-xl px-4 py-3 mb-3">
-            <Text className="text-xs text-on-surface-variant mb-1">{paymentInfo.bank_code} — {paymentInfo.account_number}</Text>
-            <Text className="text-sm font-semibold text-on-surface">{paymentInfo.account_name}</Text>
+            <Text className="text-xs text-on-surface-variant mb-1">{paymentInfo.bank_name} — {paymentInfo.bank_account}</Text>
+            <Text className="text-sm font-semibold text-on-surface">{paymentInfo.bank_account_name}</Text>
           </View>
 
           {/* Editable amount */}

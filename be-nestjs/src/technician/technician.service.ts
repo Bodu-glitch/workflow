@@ -431,7 +431,7 @@ export class TechnicianService {
         id, description, agreed_price, collected_amount, discount_amount,
         completed_at, status,
         category:category_id(id, name, slug),
-        tenant:tenant_id(id, name, settings),
+        tenant:tenant_id(id, name, commission_config),
         ratings!left(score)
       `)
       .eq('assigned_staff_id', user.id)
@@ -445,8 +445,8 @@ export class TechnicianService {
     // Tính thu nhập
     const jobsWithEarnings = rows.map((job: any) => {
       const grossAmount = job.collected_amount ?? job.agreed_price ?? 0;
-      const staffPercent = ((job.tenant?.settings as any)?.staff_percent ?? 70) / 100;
-      const staffEarning = Math.round(grossAmount * staffPercent);
+      const commissionRate = (job.tenant?.commission_config as any)?.rate ?? 0.15;
+      const staffEarning = Math.round(grossAmount * (1 - commissionRate));
       return {
         id: job.id,
         description: job.description ?? '',
@@ -457,15 +457,15 @@ export class TechnicianService {
         category: job.category,
         gross_amount: grossAmount,
         staff_earning: staffEarning,
-        rating: job.ratings?.[0]?.score ?? null,
+        rating: (job.ratings as any)?.score ?? null,
       };
     });
 
     const totalGross = jobsWithEarnings.reduce((s, j) => s + j.gross_amount, 0);
     const totalEarning = jobsWithEarnings.reduce((s, j) => s + j.staff_earning, 0);
-    const avgRating = rows.filter((j: any) => j.ratings?.[0]?.score).length > 0
-      ? rows.filter((j: any) => j.ratings?.[0]?.score)
-          .reduce((s: number, j: any) => s + j.ratings[0].score, 0) / rows.filter((j: any) => j.ratings?.[0]?.score).length
+    const rated = jobsWithEarnings.filter((j) => j.rating != null);
+    const avgRating = rated.length > 0
+      ? rated.reduce((s, j) => s + j.rating!, 0) / rated.length
       : null;
 
     return {

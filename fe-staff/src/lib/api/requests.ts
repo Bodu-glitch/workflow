@@ -72,4 +72,10 @@ export const requestsApi = {
       method: 'POST',
       body: JSON.stringify({ content }),
     }),
+
+  checkout: (id: string, form: FormData) =>
+    apiFetch<{ data: ServiceRequestSummary }>(`/requests/${id}/checkout`, {
+      method: 'POST',
+      body: form,
+    }),
 };

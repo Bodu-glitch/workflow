@@ -75,7 +75,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       let tenantId: string | null = null;
       let role = dbUser.role;
 
-      if (role !== 'superadmin' && role !== 'customer') {
+      if (role !== 'superadmin') {
         // Browsers can't set custom WS headers — tenant ID is passed via auth payload
         const tenantIdFromAuth = (client.handshake.auth as any)?.tenantId as string | undefined;
         const tenantHeader = (client.handshake.headers['x-tenant-id'] as string | undefined) ?? tenantIdFromAuth;
@@ -291,15 +291,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const payload = { requestId, status, timestamp: new Date().toISOString() };
     this.server.to(requestRoom(requestId)).emit(WS_EVENTS.REQUEST_STATUS_CHANGED, payload);
 
-    // Also notify the customer directly so Home screen updates in real-time
     void this.supabase.db
       .from('service_requests')
-      .select('customer_id')
+      .select('customer_id, tenant_id')
       .eq('id', requestId)
       .single()
       .then(({ data }) => {
         if (data?.customer_id) {
           this.server.to(customerRoom(data.customer_id)).emit(WS_EVENTS.REQUEST_STATUS_CHANGED, payload);
+        }
+        if (data?.tenant_id) {
+          this.server.to(tenantPoolRoom(data.tenant_id)).emit(WS_EVENTS.REQUEST_STATUS_CHANGED, payload);
         }
       });
   }

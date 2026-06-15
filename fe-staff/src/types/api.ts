@@ -16,7 +16,7 @@ export interface UserProfile {
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
-export type TaskStatus = 'todo' | 'moving' | 'arrived' | 'in_progress' | 'done' | 'cancelled' | 'rejected';
+export type TaskStatus = 'assigned' | 'moving' | 'arrived' | 'in_progress' | 'completed' | 'completed_late' | 'cancelled';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface TaskAssignee {

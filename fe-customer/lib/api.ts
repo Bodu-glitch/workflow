@@ -87,8 +87,8 @@ export const api = {
   delete: <T>(path: string, opts?: { tenantId?: string }) =>
     request<T>('DELETE', path, opts),
 
-  selectTenant: (requestId: string, tenantId: string) =>
-    request<{ message: string }>('PATCH', `/requests/${requestId}/select-tenant`, { body: { tenant_id: tenantId } }),
+  selectTenant: (requestId: string, tenantId: string, pricingId: string) =>
+    request<{ message: string }>('PATCH', `/requests/${requestId}/select-tenant`, { body: { tenant_id: tenantId, pricing_id: pricingId } }),
 
   updateProfile: (data: {
     full_name?: string;

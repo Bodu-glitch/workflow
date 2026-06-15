@@ -44,6 +44,7 @@ export default function HistoryScreen() {
   const renderItem = ({ item }: { item: ServiceRequest }) => {
     const isCompleted = item.status === 'completed' || item.status === 'completed_late';
     const isDownloading = downloadingId === item.id;
+    const hasRating = (item as any).ratings != null;
 
     return (
       <TouchableOpacity
@@ -82,17 +83,32 @@ export default function HistoryScreen() {
           ) : <View />}
 
           {isCompleted && (
-            <TouchableOpacity
-              style={[styles.invoiceBtn, isDownloading && styles.invoiceBtnDisabled]}
-              onPress={() => handleDownloadInvoice(item.id)}
-              disabled={isDownloading}
-            >
-              {isDownloading ? (
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              ) : (
-                <Text style={styles.invoiceBtnText}>📄 Hóa đơn</Text>
+            <View style={styles.actionBtns}>
+              {!hasRating && (
+                <TouchableOpacity
+                  style={styles.rateBtn}
+                  onPress={() => router.push(`/rating/${item.id}`)}
+                >
+                  <Text style={styles.rateBtnText}>⭐ Đánh giá</Text>
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+              {hasRating && (
+                <Text style={styles.ratedText}>
+                  {'★'.repeat((item as any).ratings.score)}{'☆'.repeat(5 - (item as any).ratings.score)}
+                </Text>
+              )}
+              <TouchableOpacity
+                style={[styles.invoiceBtn, isDownloading && styles.invoiceBtnDisabled]}
+                onPress={() => handleDownloadInvoice(item.id)}
+                disabled={isDownloading}
+              >
+                {isDownloading ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <Text style={styles.invoiceBtnText}>📄 Hóa đơn</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </TouchableOpacity>
@@ -142,6 +158,13 @@ const styles = StyleSheet.create({
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   price: { fontSize: 15, fontWeight: '700', color: COLORS.primary },
   discount: { fontSize: 12, color: COLORS.success },
+  actionBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rateBtn: {
+    borderWidth: 1.5, borderColor: '#f59e0b',
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  rateBtnText: { fontSize: 13, color: '#f59e0b', fontWeight: '600' },
+  ratedText: { fontSize: 14, color: '#f59e0b' },
   invoiceBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderWidth: 1.5, borderColor: COLORS.primary,

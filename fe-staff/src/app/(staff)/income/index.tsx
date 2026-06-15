@@ -112,35 +112,6 @@ export default function IncomeScreen() {
               </View>
             </View>
 
-            {/* Bar chart visualization */}
-            {jobs.length > 0 && (
-              <View className="bg-surface-container-lowest rounded-xl p-4 mb-4">
-                <Text className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">
-                  Thu nhập từng đơn
-                </Text>
-                {(() => {
-                  const maxEarning = Math.max(...jobs.map(j => j.staff_earning), 1);
-                  return jobs.slice(0, 10).map((job, idx) => (
-                    <View key={job.id} className="mb-3">
-                      <View className="flex-row items-center justify-between mb-1">
-                        <Text className="text-xs text-on-surface-variant flex-1" numberOfLines={1}>
-                          {job.category?.name ?? 'Dịch vụ'}
-                        </Text>
-                        <Text className="text-xs font-bold text-primary ml-2">
-                          {fmt(job.staff_earning)}
-                        </Text>
-                      </View>
-                      <View className="h-2 bg-surface-container-high rounded-full overflow-hidden">
-                        <View
-                          className="h-full bg-primary rounded-full"
-                          style={{ width: `${(job.staff_earning / maxEarning) * 100}%` }}
-                        />
-                      </View>
-                    </View>
-                  ));
-                })()}
-              </View>
-            )}
           </>
         )}
 
@@ -174,7 +145,6 @@ export default function IncomeScreen() {
                   </View>
                   <View className="items-end gap-1 ml-3">
                     <Text className="text-base font-extrabold text-success">{fmt(job.staff_earning)}</Text>
-                    <Text className="text-xs text-on-surface-variant line-through">{fmt(job.agreed_price)}</Text>
                     <StarRating score={job.rating} />
                   </View>
                 </View>

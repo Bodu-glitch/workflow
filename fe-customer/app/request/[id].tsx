@@ -95,15 +95,6 @@ export default function RequestDetailScreen() {
   // (socketRef is null on first render when auth is still loading)
   }, [id, token, joinRequestRoom, onLocationUpdate, onStatusChange, onRequote, setRequest]);
 
-  // Seed displayed status from linked task on load (request.status stays
-  // pending_assignment after task creation — the live task status comes via socket)
-  useEffect(() => {
-    const linkedTaskStatus = (request as any)?.task?.status;
-    if (linkedTaskStatus && linkedTaskStatus !== 'todo') {
-      setRequest((prev: any) => (prev && prev.status !== linkedTaskStatus ? { ...prev, status: linkedTaskStatus } : prev));
-    }
-  }, [(request as any)?.task?.status, setRequest]);
-
   const handleCancel = useCallback(() => {
     confirm('Hủy yêu cầu', 'Bạn có chắc muốn hủy yêu cầu này?', async () => {
       setCancelling(true);
@@ -282,7 +273,7 @@ export default function RequestDetailScreen() {
         )}
 
         {/* Bill — available after completion */}
-        {['completed', 'completed_late', 'done'].includes(request.status) && (
+        {['completed', 'completed_late'].includes(request.status) && (
           <TouchableOpacity
             style={styles.billBtn}
             onPress={() => router.push(`/request/${id}/bill` as any)}

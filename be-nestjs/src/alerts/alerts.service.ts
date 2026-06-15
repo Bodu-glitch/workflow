@@ -4,7 +4,7 @@ import { SupabaseService } from '../supabase/supabase.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 const ALERT_WINDOW_MINUTES = 30;
-const REMINDER_COOLDOWN_MINUTES = 60; // reminder: chỉ gửi 1 lần trong cửa sổ 30 phút
+const REMINDER_COOLDOWN_MINUTES = 60;
 
 @Injectable()
 export class AlertsService {
@@ -15,121 +15,97 @@ export class AlertsService {
     private notifications: NotificationsService,
   ) {}
 
-  @Cron('*/1 * * * *')
-  async checkDeadlineAlerts() {
+  @Cron('*/5 * * * *')
+  async checkScheduledReminders() {
     const now = new Date();
-    this.logger.log(`[CRON] Running deadline check at ${now.toISOString()}`);
     const windowEnd = new Date(now.getTime() + ALERT_WINDOW_MINUTES * 60 * 1000);
 
-    // Tasks still in todo with deadline approaching within ALERT_WINDOW_MINUTES
-    const { data: tasks, error } = await this.supabase.db
-      .from('tasks')
-      .select('id, title, deadline, tenant_id')
-      .eq('status', 'todo')
-      .not('deadline', 'is', null)
-      .gte('deadline', now.toISOString())
-      .lte('deadline', windowEnd.toISOString());
+    // Requests with scheduled_at in the next 30 min that haven't started yet
+    const { data: requests, error } = await this.supabase.db
+      .from('service_requests')
+      .select('id, description, scheduled_at, tenant_id, assigned_staff_id, assigned_by')
+      .eq('status', 'assigned')
+      .not('scheduled_at', 'is', null)
+      .gte('scheduled_at', now.toISOString())
+      .lte('scheduled_at', windowEnd.toISOString());
 
     if (error) {
-      this.logger.error('Failed to query deadline tasks', error.message);
+      this.logger.error('Failed to query upcoming requests', error.message);
       return;
     }
-    this.logger.log(`[CRON] Found ${tasks?.length ?? 0} tasks approaching deadline (window: now → +${ALERT_WINDOW_MINUTES}min)`);
-    if (!tasks?.length) return;
+    if (!requests?.length) return;
 
-    const reminderCooldownCutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MINUTES * 60 * 1000).toISOString();
+    const reminderCutoff = new Date(now.getTime() - REMINDER_COOLDOWN_MINUTES * 60 * 1000).toISOString();
 
-    for (const task of tasks) {
-      // Skip if a reminder was already sent for this task within the cooldown window
+    for (const req of requests) {
       const { data: recent } = await this.supabase.db
         .from('notifications')
         .select('id')
-        .eq('task_id', task.id)
+        .eq('request_id', req.id)
         .eq('type', 'reminder')
-        .gte('created_at', reminderCooldownCutoff)
+        .gte('created_at', reminderCutoff)
         .limit(1);
 
       if (recent && recent.length > 0) continue;
 
-      // Get assigned staff + the OT/BO who assigned them
-      const { data: assignments } = await this.supabase.db
-        .from('task_assignments')
-        .select('user_id, assigned_by')
-        .eq('task_id', task.id);
+      const recipientIds = [...new Set([req.assigned_staff_id, req.assigned_by].filter(Boolean) as string[])];
+      if (!recipientIds.length) continue;
 
-      if (!assignments?.length) continue;
-
-      const staffIds = assignments.map((a) => a.user_id);
-      const assignerIds = assignments.map((a) => a.assigned_by).filter(Boolean);
-      const recipientIds = [...new Set([...staffIds, ...assignerIds])];
-
-      const minutesLeft = Math.round(
-        (new Date(task.deadline).getTime() - now.getTime()) / 60_000,
-      );
+      const minutesLeft = Math.round((new Date(req.scheduled_at!).getTime() - now.getTime()) / 60_000);
 
       void this.notifications.sendPushNotification({
         user_ids: recipientIds,
         type: 'reminder',
-        title: 'Task Deadline Warning',
-        body: `"${task.title}" deadline in ${minutesLeft} min — not started yet`,
-        task_id: task.id,
-        tenant_id: task.tenant_id,
+        title: 'Nhắc lịch hẹn',
+        body: `Yêu cầu dịch vụ lúc ${new Date(req.scheduled_at!).toLocaleTimeString('vi-VN')} — còn ${minutesLeft} phút`,
+        request_id: req.id,
+        tenant_id: req.tenant_id,
       });
 
-      this.logger.log(`Deadline alert sent: task ${task.id} (${minutesLeft}min left)`);
+      this.logger.log(`Reminder sent: request ${req.id} (${minutesLeft}min left)`);
     }
   }
 
-  @Cron('*/1 * * * *')
-  async checkOverdueAlerts() {
+  @Cron('*/5 * * * *')
+  async checkOverdueRequests() {
     const now = new Date();
 
-    const { data: tasks, error } = await this.supabase.db
-      .from('tasks')
-      .select('id, title, deadline, tenant_id')
-      .in('status', ['todo', 'in_progress'])
-      .not('deadline', 'is', null)
-      .lt('deadline', now.toISOString());
+    const { data: requests, error } = await this.supabase.db
+      .from('service_requests')
+      .select('id, description, scheduled_at, tenant_id, assigned_staff_id, assigned_by')
+      .in('status', ['assigned', 'moving', 'arrived', 'in_progress'])
+      .not('scheduled_at', 'is', null)
+      .lt('scheduled_at', now.toISOString());
 
     if (error) {
-      this.logger.error('Failed to query overdue tasks', error.message);
+      this.logger.error('Failed to query overdue requests', error.message);
       return;
     }
-    if (!tasks?.length) return;
+    if (!requests?.length) return;
 
-    for (const task of tasks) {
-      // Skip nếu task đã từng nhận overdue notification (không giới hạn thời gian)
-      // → đảm bảo chỉ gửi đúng 1 lần duy nhất, dù server restart bao nhiêu lần
+    for (const req of requests) {
       const { data: existing } = await this.supabase.db
         .from('notifications')
         .select('id')
-        .eq('task_id', task.id)
+        .eq('request_id', req.id)
         .eq('type', 'overdue')
         .limit(1);
 
       if (existing && existing.length > 0) continue;
 
-      const { data: assignments } = await this.supabase.db
-        .from('task_assignments')
-        .select('user_id, assigned_by')
-        .eq('task_id', task.id);
-
-      if (!assignments?.length) continue;
-
-      const staffIds = assignments.map((a) => a.user_id);
-      const assignerIds = assignments.map((a) => a.assigned_by).filter(Boolean);
-      const recipientIds = [...new Set([...staffIds, ...assignerIds])];
+      const recipientIds = [...new Set([req.assigned_staff_id, req.assigned_by].filter(Boolean) as string[])];
+      if (!recipientIds.length) continue;
 
       void this.notifications.sendPushNotification({
         user_ids: recipientIds,
         type: 'overdue',
-        title: 'Task Overdue',
-        body: `"${task.title}" is overdued`,
-        task_id: task.id,
-        tenant_id: task.tenant_id,
+        title: 'Yêu cầu quá giờ hẹn',
+        body: `Yêu cầu dịch vụ đã quá thời gian hẹn.`,
+        request_id: req.id,
+        tenant_id: req.tenant_id,
       });
 
-      this.logger.log(`Overdue alert sent: task ${task.id} overdued at ${task.deadline}`);
+      this.logger.log(`Overdue alert sent: request ${req.id}`);
     }
   }
 }

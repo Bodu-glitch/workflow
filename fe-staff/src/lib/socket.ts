@@ -24,7 +24,7 @@ export function connectSocket(token: string, tenantId?: string | null): Socket {
   }
 
   socket = io(`${SOCKET_URL}/ws`, {
-    auth: { token },
+    auth: { token, tenantId },
     extraHeaders: tenantId ? { 'x-tenant-id': tenantId } : {},
     transports: ['websocket'],
     autoConnect: false,

@@ -85,6 +85,8 @@ export type RequestStatus =
   | 'negotiating'
   | 'pending_assignment'
   | 'assigned'
+  | 'moving'
+  | 'arrived'
   | 'in_progress'
   | 'completed'
   | 'completed_late'

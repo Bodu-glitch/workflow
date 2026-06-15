@@ -17,7 +17,7 @@ const STAT_CARDS: {
 }[] = [
   { key: 'available',          label: 'Chờ xử lý',     color: '#3B82F6', bgColor: '#eff6ff', statusFilter: 'available' },
   { key: 'pending_assignment', label: 'Chờ phân công',  color: '#F59E0B', bgColor: '#fffbeb', statusFilter: 'pending_assignment' },
-  { key: 'in_progress',        label: 'Đang thực hiện', color: '#8B5CF6', bgColor: '#f5f3ff', statusFilter: 'in_progress' },
+  { key: 'in_progress',        label: 'Đang thực hiện', color: '#8B5CF6', bgColor: '#f5f3ff', statusFilter: 'assigned,moving,arrived,in_progress' },
   { key: 'completed',          label: 'Hoàn thành',     color: '#10B981', bgColor: '#f0fdf4', statusFilter: 'completed,completed_late' },
 ];
 
@@ -75,8 +75,9 @@ export default function OTDashboardScreen() {
   if (isError) return <ErrorView onRetry={refetch} />;
 
   const summary = (data as any)?.data?.summary ?? emptyDashboard();
-  const total = summary.available + summary.pending_assignment + summary.assigned
-    + summary.in_progress + summary.completed + summary.completed_late + summary.cancelled;
+  const activeCount = (summary.assigned ?? 0) + (summary.moving ?? 0) + (summary.arrived ?? 0) + (summary.in_progress ?? 0);
+  const total = summary.available + summary.pending_assignment + activeCount
+    + summary.completed + summary.completed_late + summary.cancelled;
 
   const currentTenant = user?.tenants?.find((t) => t.id === user.tenant_id) ?? user?.tenants?.[0];
   const tenantName = currentTenant?.name ?? 'My Workspace';
@@ -127,7 +128,7 @@ export default function OTDashboardScreen() {
                 {label}
               </Text>
               <Text style={{ fontSize: 36, fontWeight: '900', color: '#0d1c2e', marginTop: 8 }}>
-                {summary[key]}
+                {key === 'in_progress' ? activeCount : summary[key]}
               </Text>
             </Pressable>
           ))}
@@ -144,7 +145,7 @@ export default function OTDashboardScreen() {
               {[
                 { label: 'Chờ xử lý',     value: summary.available,          color: '#3B82F6' },
                 { label: 'Chờ phân công',  value: summary.pending_assignment,  color: '#F59E0B' },
-                { label: 'Đang thực hiện', value: summary.in_progress,         color: '#8B5CF6' },
+                { label: 'Đang thực hiện', value: activeCount,                   color: '#8B5CF6' },
                 { label: 'Hoàn thành',     value: summary.completed + summary.completed_late, color: '#10B981' },
               ].filter(s => s.value > 0).map(({ label, value, color }) => {
                 const pct = total > 0 ? Math.round((value / total) * 100) : 0;

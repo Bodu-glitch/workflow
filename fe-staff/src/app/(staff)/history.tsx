@@ -6,18 +6,18 @@ import { View, Text, Pressable } from '@/tw';
 import { meApi } from '@/lib/api/me';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
-import type { Task } from '@/types/api';
+import type { ServiceRequestSummary } from '@/lib/api/requests';
 
 const STATUS_LABELS: Record<string, string> = {
-  done: 'Hoàn thành',
-  cancelled: 'Đã hủy',
-  rejected: 'Từ chối',
+  completed:      'Hoàn thành',
+  completed_late: 'Hoàn thành (trễ)',
+  cancelled:      'Đã hủy',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  done: '#10B981',
-  cancelled: '#9CA3AF',
-  rejected: '#EF4444',
+  completed:      '#10B981',
+  completed_late: '#F59E0B',
+  cancelled:      '#9CA3AF',
 };
 
 export default function WorkHistoryScreen() {
@@ -28,27 +28,31 @@ export default function WorkHistoryScreen() {
     queryFn: () => meApi.history(page, 20),
   });
 
-  const tasks: Task[] = data?.data ?? [];
+  const items = (data?.data ?? []) as unknown as ServiceRequestSummary[];
   const meta = data?.meta;
 
   if (isLoading) return <LoadingScreen />;
   if (isError) return <ErrorView onRetry={refetch} />;
 
-  function renderTask({ item: task }: { item: Task }) {
-    const statusColor = STATUS_COLORS[task.status] ?? '#9CA3AF';
-    const statusLabel = STATUS_LABELS[task.status] ?? task.status;
+  function renderItem({ item: req }: { item: ServiceRequestSummary }) {
+    const statusColor = STATUS_COLORS[req.status] ?? '#9CA3AF';
+    const statusLabel = STATUS_LABELS[req.status] ?? req.status;
+    const scheduledAt = (req as any).scheduled_at as string | undefined;
+    const locationAddress = (req as any).location_address as string | undefined;
 
     return (
       <Pressable
-        onPress={() => router.push({ pathname: '/(staff)/tasks/[id]', params: { id: task.id } })}
+        onPress={() => router.push({ pathname: '/(staff)/tasks/[id]', params: { id: req.id } })}
         className="bg-surface-container-lowest rounded-xl p-5 mb-3 mx-4 overflow-hidden active:opacity-70"
       >
         <View className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: statusColor }} />
         <View className="flex-row items-start justify-between mb-2">
           <View className="flex-1 mr-3 gap-0.5">
-            <Text className="text-sm font-semibold text-on-surface" numberOfLines={2}>{task.title}</Text>
-            {task.description && (
-              <Text className="text-xs text-on-surface-variant" numberOfLines={1}>{task.description}</Text>
+            <Text className="text-sm font-semibold text-on-surface" numberOfLines={1}>
+              {req.category?.name ?? 'Dịch vụ'}
+            </Text>
+            {req.description && (
+              <Text className="text-xs text-on-surface-variant" numberOfLines={1}>{req.description}</Text>
             )}
           </View>
           <View style={{ backgroundColor: statusColor + '20', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
@@ -57,12 +61,22 @@ export default function WorkHistoryScreen() {
         </View>
 
         <View className="gap-1 mt-1">
-          {task.location_name && (
-            <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {task.location_name}</Text>
+          {locationAddress && (
+            <Text className="text-xs text-on-surface-variant" numberOfLines={1}>📍 {locationAddress}</Text>
           )}
-          {task.deadline && (
+          {req.completed_at && (
             <Text className="text-xs text-on-surface-variant">
-              ⏰ {new Date(task.deadline).toLocaleString('vi-VN')}
+              ✅ {new Date(req.completed_at).toLocaleString('vi-VN')}
+            </Text>
+          )}
+          {scheduledAt && !req.completed_at && (
+            <Text className="text-xs text-on-surface-variant">
+              🕐 {new Date(scheduledAt).toLocaleString('vi-VN')}
+            </Text>
+          )}
+          {req.agreed_price != null && (
+            <Text className="text-xs font-bold text-primary">
+              {Number(req.agreed_price).toLocaleString('vi-VN')}₫
             </Text>
           )}
         </View>
@@ -85,9 +99,9 @@ export default function WorkHistoryScreen() {
       </View>
 
       <FlatList
-        data={tasks}
+        data={items}
         keyExtractor={(item) => item.id}
-        renderItem={renderTask}
+        renderItem={renderItem}
         contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={() => { setPage(1); refetch(); }} />

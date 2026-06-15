@@ -30,8 +30,8 @@ export default function AddressFormScreen() {
       const payload = {
         label,
         address: address.trim(),
-        lat: location?.lat,
-        lng: location?.lng,
+        lat: location?.latitude,
+        lng: location?.longitude,
         is_default: isDefault,
       };
 

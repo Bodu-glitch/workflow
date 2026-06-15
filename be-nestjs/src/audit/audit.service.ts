@@ -11,7 +11,7 @@ interface CurrentUser {
 export class AuditService {
   constructor(private supabase: SupabaseService) {}
 
-  async getTaskAuditLogs(taskId: string, user: CurrentUser, pagination: PaginationDto) {
+  async getRequestAuditLogs(requestId: string, user: CurrentUser, pagination: PaginationDto) {
     const { page = 1, limit = 20 } = pagination;
     const offset = (page - 1) * limit;
 
@@ -21,7 +21,7 @@ export class AuditService {
         *,
         actor:user_id(id, full_name, role)
       `, { count: 'exact' })
-      .eq('task_id', taskId)
+      .eq('request_id', requestId)
       .eq('tenant_id', user.tenant_id)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -38,7 +38,8 @@ export class AuditService {
       .from('audit_logs')
       .select(`
         *,
-        task:task_id(id, title, status)
+        actor:user_id(id, full_name, role),
+        request:request_id(id, description, status)
       `, { count: 'exact' })
       .eq('user_id', staffId)
       .eq('tenant_id', user.tenant_id)
@@ -58,7 +59,7 @@ export class AuditService {
       .select(`
         *,
         actor:user_id(id, full_name, role),
-        task:task_id(id, title)
+        request:request_id(id, description)
       `, { count: 'exact' })
       .eq('tenant_id', user.tenant_id);
 

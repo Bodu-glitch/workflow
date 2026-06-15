@@ -1,6 +1,6 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { View, Text, Pressable, ScrollView } from '@/tw';
 import { requestsApi } from '@/lib/api/requests';
@@ -8,11 +8,11 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorView } from '@/components/ui/ErrorView';
 
 const STATUS_TABS = [
-  { label: 'Scheduled', status: 'unavailable' },
-  { label: 'Pending', status: 'available' },
-  { label: 'Pending Assignment', status: 'pending_assignment' },
-  { label: 'Assigned', status: 'assigned,in_progress' },
-  { label: 'Completed', status: 'completed,completed_late' },
+  { label: 'Chờ xử lý', status: 'available' },
+  { label: 'Chờ phân công', status: 'pending_assignment' },
+  { label: 'Đang thực hiện', status: 'assigned,moving,arrived,in_progress' },
+  { label: 'Hoàn thành', status: 'completed,completed_late' },
+  { label: 'Đã hủy', status: 'cancelled' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -40,7 +40,20 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function BORequestsScreen() {
-  const [activeTab, setActiveTab] = useState(0);
+  const { status: statusParam } = useLocalSearchParams<{ status?: string }>();
+
+  const initialTab = statusParam
+    ? Math.max(0, STATUS_TABS.findIndex((t) => t.status === statusParam))
+    : 0;
+
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    if (statusParam) {
+      const idx = STATUS_TABS.findIndex((t) => t.status === statusParam);
+      if (idx >= 0) setActiveTab(idx);
+    }
+  }, [statusParam]);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['service-requests', STATUS_TABS[activeTab].status],
